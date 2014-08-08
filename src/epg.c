@@ -1077,6 +1077,15 @@ int epg_episode_set_first_aired
   return save;
 }
 
+int epg_episode_set_md5
+  ( epg_episode_t *episode, const char *md5, epggrab_module_t *src )
+{
+  int save;
+  if (!episode || !md5) return 0;
+  save = _epg_object_set_str(episode, &episode->md5, md5, src);
+  return save;
+}
+
 static void _epg_episode_add_broadcast 
   ( epg_episode_t *episode, epg_broadcast_t *broadcast )
 {
@@ -1145,6 +1154,14 @@ int epg_episode_number_cmp ( epg_episode_num_t *a, epg_episode_num_t *b )
   }
 }
 
+int epg_episode_md5_cmp ( epg_episode_t *a, const char *b)
+{
+	if (a->md5)
+		return strcmp(a->md5, b);
+	else
+		return -1;
+}
+
 // WIBNI: this could do with soem proper matching, maybe some form of
 //        fuzzy string match. I did try a few things, but none of them
 //        were very reliable.
@@ -1194,6 +1211,8 @@ htsmsg_t *epg_episode_serialize ( epg_episode_t *episode )
     htsmsg_add_s64(m, "first_aired", episode->first_aired);
   if (episode->image)
     htsmsg_add_str(m, "image", episode->image);
+  if (episode->md5)
+    htsmsg_add_str(m, "md5", episode->md5);
 
   return m;
 }
@@ -1274,6 +1293,9 @@ epg_episode_t *epg_episode_deserialize ( htsmsg_t *m, int create, int *save )
 
   if ( (str = htsmsg_get_str(m, "image")) )
     *save |= epg_episode_set_image(ee, str, NULL);
+
+  if ( (str = htsmsg_get_str(m, "md5")) )
+    *save |= epg_episode_set_md5(ee, str, NULL);
 
   return ee;
 }

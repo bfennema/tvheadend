@@ -462,6 +462,8 @@ if enabled cwc || enabled capmt || enabled constcw; then
   fi
 fi
 
+LDFLAGS="$LDFLAGS -lcurl"
+
 #
 # libdvben50221
 #

@@ -203,6 +203,7 @@ static void _epggrab_load ( void )
 #endif
   pyepg_load();
   xmltv_load();
+  sd_load();
 }
 
 void epggrab_save ( void )
@@ -376,6 +377,7 @@ void epggrab_init ( void )
 #endif
   pyepg_init();
   xmltv_init();
+  sd_init();
 
   /* Initialise the OTA subsystem */
   epggrab_ota_init();

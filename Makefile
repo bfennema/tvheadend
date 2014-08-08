@@ -196,6 +196,7 @@ SRCS += src/epggrab/module.c\
 	src/epggrab/channel.c\
 	src/epggrab/module/pyepg.c\
 	src/epggrab/module/xmltv.c\
+	src/epggrab/module/sd.c\
 
 SRCS += src/plumbing/tsfix.c \
 	src/plumbing/globalheaders.c

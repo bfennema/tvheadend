@@ -269,11 +269,12 @@ struct epg_episode
   epg_genre_list_t           genre;         ///< Episode genre(s)
   epg_episode_num_t          epnum;         ///< Episode numbering
   // Note: do not use epnum directly! use the accessor routine
+  char                      *md5;           ///< Episode checksum
 
-  uint8_t                    is_bw;          ///< Is black and white
-  uint8_t                    star_rating;    ///< Star rating
-  uint8_t                    age_rating;     ///< Age certificate
-  time_t                     first_aired;    ///< Original airdate
+  uint8_t                    is_bw;         ///< Is black and white
+  uint8_t                    star_rating;   ///< Star rating
+  uint8_t                    age_rating;    ///< Age certificate
+  time_t                     first_aired;   ///< Original airdate
 
   LIST_ENTRY(epg_episode)    blink;         ///< Brand link
   LIST_ENTRY(epg_episode)    slink;         ///< Season link
@@ -354,6 +355,9 @@ int epg_episode_set_star_rating
 int epg_episode_set_age_rating
   ( epg_episode_t *e, uint8_t age, struct epggrab_module *src )
   __attribute__((warn_unused_result));
+int epg_episode_set_md5
+  ( epg_episode_t *e, const char *m, struct epggrab_module *src )
+  __attribute__((warn_unused_result));
 
 // Note: this does NOT strdup the text field
 void epg_episode_get_epnum
@@ -375,6 +379,9 @@ size_t epg_episode_number_format
     const char *cfmt );
 int  epg_episode_number_cmp
   ( epg_episode_num_t *a, epg_episode_num_t *b );
+
+int  epg_episode_md5_cmp
+  ( epg_episode_t *a, const char *b );
 
 /* Matching */
 int epg_episode_fuzzy_match

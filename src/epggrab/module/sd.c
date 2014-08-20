@@ -638,6 +638,27 @@ static int sd_parse_video(
 	return save;
 }
 
+static htsmsg_field_t *htsmsg_add_uniq_str(
+	htsmsg_t *msg,
+	const char *name,
+	const char *str)
+{
+	htsmsg_field_t *f;
+	const char *str2;
+	int len = strlen(str);
+
+	HTSMSG_FOREACH(f, msg)
+	{
+		str2 = htsmsg_field_get_str(f);
+		if (len == strlen(str2) && strcmp(str, str2) == 0)
+			return f;
+	}
+
+	htsmsg_add_str(msg, name, str);
+
+	return NULL;
+}
+
 static int process_program(
 	void *mod,
 	channel_t *ch,
@@ -683,11 +704,14 @@ static int process_program(
 	save |= sd_parse_video(mod, ebc, program);
 
 	snprintf(uri, sizeof(uri)-1, "ddprogid://%s/%s", ((epggrab_module_t *)mod)->id, id);
-	snprintf(suri, sizeof(suri)-1, "ddprogid://%s/%.10s", ((epggrab_module_t *)mod)->id, id);
+	if (strncmp(id, "SH", 2) == 0 || strncmp(id, "EP", 2) == 0)
+	{
+		snprintf(suri, sizeof(suri)-1, "ddprogid://%s/%.10s", ((epggrab_module_t *)mod)->id, id);
 
-	es = epg_serieslink_find_by_uri(suri, 1, &save2);
-	if (es)
-		save |= epg_broadcast_set_serieslink(ebc, es, mod);
+		es = epg_serieslink_find_by_uri(suri, 1, &save2);
+		if (es)
+			save |= epg_broadcast_set_serieslink(ebc, es, mod);
+	}
 
 	ee = epg_episode_find_by_uri(uri, 1, &save3);
 	if (ee)
@@ -698,8 +722,8 @@ static int process_program(
 
 	if (epg_episode_md5_cmp(ee, md5))
 	{
-		htsmsg_add_str(l, NULL, id);
-		(*cnt) ++;
+		if (htsmsg_add_uniq_str(l, NULL, id) == NULL)
+			(*cnt) ++;
 	}
 
 	return save;

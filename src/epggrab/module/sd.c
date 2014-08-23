@@ -234,10 +234,11 @@ static void get_episodes(void *mod, CURL *curl, htsmsg_t *l)
 	if (buf.cur_size > 0)
 	{
 		m = htsmsg_json_deserialize(buf.ptr);
-		free(buf.ptr);
 		process_episode(mod, m);
 		htsmsg_destroy(m);
+
 	}
+	free(buf.ptr);
 }
 
 static time_t _sp_str2time(const char *in)
@@ -590,7 +591,7 @@ static int sd_parse_audio(
 		HTSMSG_FOREACH(f, audio)
 		{
 			prop = htsmsg_field_get_str(f);
-	
+
 			if (strcmp(prop, "cc") == 0)
 				save |= epg_broadcast_set_is_subtitled(ebc, 1, mod);
 			else if (strcmp(prop, "subtitled") == 0)
@@ -767,21 +768,24 @@ static char *_sd_grab(void *mod)
 	int save = 0;
 	int cnt = 0;
 
-	m = htsmsg_create_map();
-
 	curl = curl_easy_init();
 	chunk = curl_slist_append(chunk, "Content-Type: application/json;charset=UTF-8");
 	curl_easy_setopt(curl, CURLOPT_HTTPHEADER, chunk);
 	curl_easy_setopt(curl, CURLOPT_ENCODING, "");
-
 
 	if (strlen(skel->token) == 0)
 	{
 		if (get_token(curl, skel->username, skel->sha1_password, skel->token) != 0)
 			skel->token[0] = '\0';
 	}
+
 	if (strlen(skel->token) == 0)
+	{
+		curl_slist_free_all(chunk);
+		curl_easy_cleanup(curl);
+
 		return NULL;
+	}
 
 	snprintf(token_header, sizeof(token_header), "Token: %s", skel->token);
 	chunk = curl_slist_append(chunk, token_header);
@@ -851,7 +855,10 @@ static char *_sd_grab(void *mod)
 		printf("Downloading %d episodes\n", cnt);
 		get_episodes(mod, curl, l);
 	}
+	else
+		htsmsg_destroy(l);
 
+	curl_slist_free_all(chunk);
 	curl_easy_cleanup(curl);
 
 	return NULL;

@@ -153,6 +153,7 @@ static htsmsg_t *get_status(CURL *curl)
 
 	curl_easy_setopt(curl, CURLOPT_URL, "https://json.schedulesdirect.org/20131021/status");
 	curl_easy_setopt(curl, CURLOPT_HTTPGET, 1L);
+	curl_easy_setopt(curl, CURLOPT_WRITEFUNCTION, write_callback);
 	curl_easy_setopt(curl, CURLOPT_WRITEDATA, &buf);
 
 	curl_easy_perform(curl);
@@ -175,6 +176,7 @@ static htsmsg_t *get_stations(CURL *curl, const char *uri)
 
 	curl_easy_setopt(curl, CURLOPT_URL, url);
 	curl_easy_setopt(curl, CURLOPT_HTTPGET, 1L);
+	curl_easy_setopt(curl, CURLOPT_WRITEFUNCTION, write_callback);
 	curl_easy_setopt(curl, CURLOPT_WRITEDATA, &buf);
 
 	curl_easy_perform(curl);

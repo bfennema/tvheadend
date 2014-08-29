@@ -938,7 +938,7 @@ void sd_init(void)
 		htsmsg_destroy(m);
 	}
 
-	epggrab_module_int_create(&skel->mod, "sd", "Schedules Direct", 3, "sd",
+	epggrab_module_int_create(&skel->mod, "sd", "Schedules Direct", 4, "sd",
 			_sd_grab, _sd_parse, _sd_trans, &_sd_channels);
 }
 

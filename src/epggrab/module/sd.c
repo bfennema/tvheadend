@@ -148,6 +148,7 @@ static int get_token(CURL *curl, char *username, char *sha1_hex, char *token)
 
 static htsmsg_t *get_status(CURL *curl)
 {
+	int code = -1;
 	struct buffer buf = { 0, 0, NULL };
 	htsmsg_t *m;
 
@@ -162,8 +163,18 @@ static htsmsg_t *get_status(CURL *curl)
 
 	m = htsmsg_json_deserialize(buf.ptr);
 	free(buf.ptr);
-
-	return m;
+	if (m)
+	{
+		if (!htsmsg_get_s32(m, "code", &code) && code == 0)
+			return m;
+		else
+		{
+			htsmsg_destroy(m);
+			return NULL;
+		}
+	}
+	else
+		return NULL;
 }
 
 static htsmsg_t *get_stations(CURL *curl, const char *uri)
@@ -808,7 +819,16 @@ static char *_sd_grab(void *mod)
 	chunk = curl_slist_append(chunk, token_header);
 	curl_easy_setopt(curl, CURLOPT_HTTPHEADER, chunk);
 
-	m = get_status(curl);
+	if ((m = get_status(curl)) == NULL)
+	{
+		skel->token[0] = '\0';
+
+		curl_slist_free_all(chunk);
+		curl_easy_cleanup(curl);
+
+		return _sd_grab(mod);
+	}
+
 	v = htsmsg_get_list(m, "lineups");
 	l = htsmsg_create_list();
 

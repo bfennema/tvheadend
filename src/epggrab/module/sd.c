@@ -409,7 +409,7 @@ static int sd_parse_genre(
 	htsmsg_t *genre;
 	htsmsg_field_t *f;
 	const char *g;
-	epg_genre_list_t genres;
+	epg_genre_list_t *genres = NULL;
 	memset(&genres, 0x00, sizeof(epg_genre_list_t));
 
 	genre = htsmsg_get_list(episode, "genres");
@@ -418,10 +418,19 @@ static int sd_parse_genre(
 		HTSMSG_FOREACH(f, genre)
 		{
 			g = htsmsg_field_get_str(f);
-			epg_genre_list_add_by_str(&genres, g);
+			if (g)
+			{
+				if (!genres)
+					genres = calloc(1, sizeof(epg_genre_list_t));
+				epg_genre_list_add_by_str(genres, g);
+			}
 		}
 
-		save |= epg_episode_set_genre(ee, &genres, mod);
+		if (genres)
+		{
+			save |= epg_episode_set_genre(ee, genres, mod);
+			epg_genre_list_destroy(genres);
+		}
 	}
 
 	return save;
@@ -574,14 +583,22 @@ static int process_episode(
 	epg_episode_t *ee;
 	char uri[128];
 	const char *id;
+	epg_episode_num_t epnum;
+	memset(&epnum, 0, sizeof(epnum));
 
 	id = htsmsg_get_str(episode, "programID");
 
 	snprintf(uri, sizeof(uri)-1, "ddprogid://%s/%s", ((epggrab_module_t *)mod)->id, id);
 
-	pthread_mutex_lock(&global_lock);
 	ee = epg_episode_find_by_uri(uri, 0, &save);
-	pthread_mutex_unlock(&global_lock);
+
+	if (sscanf(&id[10], "%hu", &epnum.e_num))
+	{
+		if (epnum.e_num)
+		{
+			save |= epg_episode_set_epnum(ee, &epnum, mod);
+		}
+	}
 
 	md5 = htsmsg_get_str(episode, "md5");
 
@@ -910,13 +927,15 @@ static char *_sd_grab(void *mod)
 		htsmsg_t *msg;
 		printf("Downloading %d episodes\n", cnt);
 		msg = get_episodes(curl, l);
+		pthread_mutex_lock(&global_lock);
 		HTSMSG_FOREACH(f, msg)
 		{
 			m = htsmsg_get_map_by_field(f);
 			process_episode(mod, m);
 		}
 		htsmsg_destroy(msg);
-
+		epg_updated();
+		pthread_mutex_unlock(&global_lock);
 	}
 	else
 		htsmsg_destroy(l);

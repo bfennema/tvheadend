@@ -193,6 +193,10 @@ static htsmsg_t *get_stations(CURL *curl, const char *uri)
 	curl_easy_perform(curl);
 
 	m = htsmsg_json_deserialize(buf.ptr);
+	if (m == NULL)
+	{
+		printf("get_stations(%s) error: len=%d, ptr=%s\n", uri, buf.cur_size, buf.ptr);
+	}
 	free(buf.ptr);
 
 	return m;
@@ -854,45 +858,48 @@ static char *_sd_grab(void *mod)
 		c = htsmsg_get_map_by_field(f);
 		uri = htsmsg_get_str(c, "uri");
 		m2 = get_stations(curl, uri);
-		m3 = htsmsg_create_map();
-
-		v2 = htsmsg_get_list(m2, "stations");
-		HTSMSG_FOREACH(f2, v2)
+		if (m2)
 		{
-			s = htsmsg_detach_submsg(f2);
-			sid = htsmsg_get_str(s, "stationID");
-			htsmsg_add_msg(m3, sid, s);
-		}
+			m3 = htsmsg_create_map();
 
-		v2 = htsmsg_get_list(m2, "map");
-		HTSMSG_FOREACH(f2, v2)
-		{
-			c2 = htsmsg_get_map_by_field(f2);
-			sid = htsmsg_get_str(c2, "stationID");
-			c3 = htsmsg_get_map(m3, sid);
-
-			freq = major = minor = 0;
-			htsmsg_get_u32(c2, "uhfVhf", &freq);
-			htsmsg_get_u32(c2, "atscMajor", &major);
-			htsmsg_get_u32(c2, "atscMinor", &minor);
-
-			ch = epggrab_channel_find(skel->mod.channels,
-				sid, 1, &save,
-				(epggrab_module_t *)&skel->mod);
-			sprintf(name, "%d-%d %s (%d)",
-				major, minor, htsmsg_get_str(c3, "callsign"), freq);
-			save |= epggrab_channel_set_name(ch, name);
-			if (save)
-				epggrab_channel_updated(ch);
-
-			if (LIST_FIRST(&ch->channels))
+			v2 = htsmsg_get_list(m2, "stations");
+			HTSMSG_FOREACH(f2, v2)
 			{
-				htsmsg_add_str(l, NULL, sid);
-				cnt ++;
+				s = htsmsg_detach_submsg(f2);
+				sid = htsmsg_get_str(s, "stationID");
+				htsmsg_add_msg(m3, sid, s);
 			}
+
+			v2 = htsmsg_get_list(m2, "map");
+			HTSMSG_FOREACH(f2, v2)
+			{
+				c2 = htsmsg_get_map_by_field(f2);
+				sid = htsmsg_get_str(c2, "stationID");
+				c3 = htsmsg_get_map(m3, sid);
+
+				freq = major = minor = 0;
+				htsmsg_get_u32(c2, "uhfVhf", &freq);
+				htsmsg_get_u32(c2, "atscMajor", &major);
+				htsmsg_get_u32(c2, "atscMinor", &minor);
+
+				ch = epggrab_channel_find(skel->mod.channels,
+					sid, 1, &save,
+					(epggrab_module_t *)&skel->mod);
+				sprintf(name, "%d-%d %s (%d)",
+					major, minor, htsmsg_get_str(c3, "callsign"), freq);
+				save |= epggrab_channel_set_name(ch, name);
+				if (save)
+					epggrab_channel_updated(ch);
+
+				if (LIST_FIRST(&ch->channels))
+				{
+					htsmsg_add_str(l, NULL, sid);
+					cnt ++;
+				}
+			}
+			htsmsg_destroy(m3);
+			htsmsg_destroy(m2);
 		}
-		htsmsg_destroy(m2);
-		htsmsg_destroy(m3);
 	}
 
 	htsmsg_destroy(m);

@@ -129,6 +129,7 @@ static int get_token(CURL *curl, char *username, char *sha1_hex, char *token)
 
 	free(out);
 
+	buf.ptr[buf.cur_size] = '\0';
 	m = htsmsg_json_deserialize(buf.ptr);
 	if (m)
 	{
@@ -150,7 +151,7 @@ static htsmsg_t *get_status(CURL *curl)
 {
 	int code = -1;
 	struct buffer buf = { 0, 0, NULL };
-	htsmsg_t *m;
+	htsmsg_t *m = NULL;
 
 	curl_easy_setopt(curl, CURLOPT_URL, "https://json.schedulesdirect.org/20131021/status");
 	curl_easy_setopt(curl, CURLOPT_HTTPGET, 1L);
@@ -159,22 +160,22 @@ static htsmsg_t *get_status(CURL *curl)
 
 	curl_easy_perform(curl);
 
-/*	printf("ptr: %s\n", buf.ptr); */
-
-	m = htsmsg_json_deserialize(buf.ptr);
-	free(buf.ptr);
-	if (m)
+	if (buf.cur_size > 0)
 	{
-		if (!htsmsg_get_s32(m, "code", &code) && code == 0)
-			return m;
-		else
+		buf.ptr[buf.cur_size] = '\0';
+		printf("ptr: %s\n", buf.ptr);
+		m = htsmsg_json_deserialize(buf.ptr);
+		if (m)
 		{
-			htsmsg_destroy(m);
-			return NULL;
+			if (htsmsg_get_s32(m, "code", &code) || code != 0)
+			{
+				htsmsg_destroy(m);
+				m = NULL;
+			}
 		}
 	}
-	else
-		return NULL;
+	free(buf.ptr);
+	return m;
 }
 
 static htsmsg_t *get_stations(CURL *curl, const char *uri)
@@ -192,6 +193,8 @@ static htsmsg_t *get_stations(CURL *curl, const char *uri)
 
 	curl_easy_perform(curl);
 
+	buf.ptr[buf.cur_size] = '\0';
+	printf("ptr: %s\n", buf.ptr);
 	m = htsmsg_json_deserialize(buf.ptr);
 	if (m == NULL)
 	{
@@ -224,10 +227,10 @@ static htsmsg_t *get_schedules(CURL *curl, htsmsg_t *l)
 
 	free(out);
 
-/*	printf("ptr: %s\n", buf.ptr);  */
-
 	if (buf.cur_size > 0)
 	{
+		buf.ptr[buf.cur_size] = '\0';
+/*	printf("ptr: %s\n", buf.ptr);  */
 		m = htsmsg_json_deserialize(buf.ptr);
 		id = htsmsg_get_str(m, buf.id);
 		htsmsg_add_msg(buf.m, id, m);
@@ -260,10 +263,11 @@ static htsmsg_t *get_episodes(CURL *curl, htsmsg_t *l)
 
 	free(out);
 
-/*	printf("ptr: %s\n", buf.ptr);  */
 
 	if (buf.cur_size > 0)
 	{
+		buf.ptr[buf.cur_size] = '\0';
+/*	printf("ptr: %s\n", buf.ptr);  */
 		m = htsmsg_json_deserialize(buf.ptr);
 		id = htsmsg_get_str(m, buf.id);
 		htsmsg_add_msg(buf.m, id, m);
@@ -862,7 +866,20 @@ static char *_sd_grab(void *mod)
 		{
 			m3 = htsmsg_create_map();
 
-			v2 = htsmsg_get_list(m2, "stations");
+			if ((v2 = htsmsg_get_list(m2, "stations")) == NULL)
+			{
+				skel->token[0] = '\0';
+
+				curl_slist_free_all(chunk);
+				curl_easy_cleanup(curl);
+
+				htsmsg_destroy(m3);
+				htsmsg_destroy(m2);
+				htsmsg_destroy(m);
+
+				return _sd_grab(mod);
+			}
+
 			HTSMSG_FOREACH(f2, v2)
 			{
 				s = htsmsg_detach_submsg(f2);
@@ -870,7 +887,20 @@ static char *_sd_grab(void *mod)
 				htsmsg_add_msg(m3, sid, s);
 			}
 
-			v2 = htsmsg_get_list(m2, "map");
+			if ((v2 = htsmsg_get_list(m2, "map")) == NULL)
+			{
+				skel->token[0] = '\0';
+
+				curl_slist_free_all(chunk);
+				curl_easy_cleanup(curl);
+
+				htsmsg_destroy(m3);
+				htsmsg_destroy(m2);
+				htsmsg_destroy(m);
+
+				return _sd_grab(mod);
+			}
+
 			HTSMSG_FOREACH(f2, v2)
 			{
 				c2 = htsmsg_get_map_by_field(f2);

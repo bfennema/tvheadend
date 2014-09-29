@@ -560,7 +560,7 @@ static int sd_parse_movie(
 		{
 			HTSMSG_FOREACH(f, quality)
 			{
-	                	m = htsmsg_get_map_by_field(f);
+				m = htsmsg_get_map_by_field(f);
 
 				rating_s = htsmsg_get_str(m, "rating");
 				min_s = htsmsg_get_str(m, "minRating");

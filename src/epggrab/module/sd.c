@@ -85,8 +85,16 @@ static size_t program_callback(void *contents, size_t size, size_t nmemb, void *
 			{
 				buf->ptr[offset] = '\0';
 				m = htsmsg_json_deserialize(buf->ptr);
-				id = htsmsg_get_str(m, buf->id);
-				htsmsg_add_msg(buf->m, id, m);
+				if (m)
+				{
+					id = htsmsg_get_str(m, buf->id);
+					if (id)
+						htsmsg_add_msg(buf->m, id, m);
+					else
+						printf("program_callback id error: %s\n", buf->ptr);
+				}
+				else
+					printf("program_callback m error: %s\n", buf->ptr);
 			}
 
 			offset = 0;
@@ -141,7 +149,7 @@ static int get_token(CURL *curl, char *username, char *sha1_hex, char *token)
 		htsmsg_destroy(m);
 	}
 	else
-		printf("sd: %s\n", buf.ptr);
+		printf("get_token error: %s\n", buf.ptr);
 
 	free(buf.ptr);
 	return code;
@@ -163,16 +171,18 @@ static htsmsg_t *get_status(CURL *curl)
 	if (buf.cur_size > 0)
 	{
 		buf.ptr[buf.cur_size] = '\0';
-		printf("ptr: %s\n", buf.ptr);
 		m = htsmsg_json_deserialize(buf.ptr);
 		if (m)
 		{
 			if (htsmsg_get_s32(m, "code", &code) || code != 0)
 			{
+				printf("get_status code error: %s\n", buf.ptr);
 				htsmsg_destroy(m);
 				m = NULL;
 			}
 		}
+		else
+			printf("get_status m error: %s\n", buf.ptr);
 	}
 	free(buf.ptr);
 	return m;
@@ -194,7 +204,6 @@ static htsmsg_t *get_stations(CURL *curl, const char *uri)
 	curl_easy_perform(curl);
 
 	buf.ptr[buf.cur_size] = '\0';
-	printf("ptr: %s\n", buf.ptr);
 	m = htsmsg_json_deserialize(buf.ptr);
 	if (m == NULL)
 	{
@@ -230,10 +239,17 @@ static htsmsg_t *get_schedules(CURL *curl, htsmsg_t *l)
 	if (buf.cur_size > 0)
 	{
 		buf.ptr[buf.cur_size] = '\0';
-/*	printf("ptr: %s\n", buf.ptr);  */
 		m = htsmsg_json_deserialize(buf.ptr);
-		id = htsmsg_get_str(m, buf.id);
-		htsmsg_add_msg(buf.m, id, m);
+		if (m)
+		{
+			id = htsmsg_get_str(m, buf.id);
+			if (id)
+				htsmsg_add_msg(buf.m, id, m);
+			else
+				printf("get_schedules id error: %s\n", buf.ptr);
+		}
+		else
+			printf("get_schedules m error: %s\n", buf.ptr);
 
 	}
 	free(buf.ptr);
@@ -263,15 +279,20 @@ static htsmsg_t *get_episodes(CURL *curl, htsmsg_t *l)
 
 	free(out);
 
-
 	if (buf.cur_size > 0)
 	{
 		buf.ptr[buf.cur_size] = '\0';
-/*	printf("ptr: %s\n", buf.ptr);  */
 		m = htsmsg_json_deserialize(buf.ptr);
-		id = htsmsg_get_str(m, buf.id);
-		htsmsg_add_msg(buf.m, id, m);
-
+		if (m)
+		{
+			id = htsmsg_get_str(m, buf.id);
+			if (id)
+				htsmsg_add_msg(buf.m, id, m);
+			else
+				printf("get_episodes id error: %s\n", buf.ptr);
+		}
+		else
+			printf("get_episodes m error: %s\n", buf.ptr);
 	}
 	free(buf.ptr);
 
@@ -937,7 +958,7 @@ static char *_sd_grab(void *mod)
 	if (cnt > 0)
 	{
 		htsmsg_t *msg;
-		printf("Downloading %d schedules\n", cnt);
+		tvhlog(LOG_INFO, "sd", "Downloading %d schedules\n", cnt);
 		msg = get_schedules(curl, l);
 		cnt = 0;
 
@@ -962,7 +983,7 @@ static char *_sd_grab(void *mod)
 	if (cnt > 0)
 	{
 		htsmsg_t *msg;
-		printf("Downloading %d episodes\n", cnt);
+		tvhlog(LOG_INFO, "sd", "Downloading %d episodes\n", cnt);
 		msg = get_episodes(curl, l);
 		pthread_mutex_lock(&global_lock);
 		HTSMSG_FOREACH(f, msg)

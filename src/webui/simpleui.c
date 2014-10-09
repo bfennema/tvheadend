@@ -374,7 +374,10 @@ page_einfo(http_connection_t *hc, const char *remain, void *opaque)
     htsbuf_qprintf(hq, "%s", s);
   else if ( (s = epg_broadcast_get_summary(e, lang)) )
     htsbuf_qprintf(hq, "%s", s);
-  
+  else if ( e->episode && (s = epg_episode_get_description(e->episode, lang)) )
+    htsbuf_qprintf(hq, "%s", s);
+  else if ( e->episode && (s = epg_episode_get_summary(e->episode, lang)) )
+    htsbuf_qprintf(hq, "%s", s);
 
   pthread_mutex_unlock(&global_lock);
 

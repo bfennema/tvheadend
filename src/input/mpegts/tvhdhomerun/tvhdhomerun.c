@@ -48,7 +48,7 @@ tvhdhomerun_device_class_get_childs ( idnode_t *in )
 }
 
 typedef struct tvhdhomerun_discovery {
-  TAILQ_ENTRY(tvhdhomerun_discovery) disc_link; 
+  TAILQ_ENTRY(tvhdhomerun_discovery) disc_link;
 } tvhdhomerun_discovery_t;
 
 TAILQ_HEAD(tvhdhomerun_discovery_queue, tvhdhomerun_discovery);
@@ -175,11 +175,10 @@ const idclass_t tvhdhomerun_device_class =
       .notify   = tvhdhomerun_device_class_override_notify,
       .list     = tvhdhomerun_device_class_override_enum,
       .off      = offsetof(tvhdhomerun_device_t, hd_type),
-    },    
+    },
     {}
   }
 };
-
 
 void
 tvhdhomerun_device_save( tvhdhomerun_device_t *hd )
@@ -248,7 +247,6 @@ tvhdhomerun_device_find( uint32_t device_id )
   return NULL;
 }
 
-
 #define MAX_HDHOMERUN_DEVICES 8
 
 static void tvhdhomerun_device_create(struct hdhomerun_discover_device_t *dInfo) {
@@ -315,7 +313,7 @@ static void tvhdhomerun_device_create(struct hdhomerun_discover_device_t *dInfo)
   hd->hd_info.ip_address = strdup(inet_ntoa(ip_addr));
   hd->hd_info.uuid = strdup(uuid.hex);
   hd->hd_info.friendlyname = strdup(fName);
-  
+
   if (conf)
     feconf = htsmsg_get_map(conf, "frontends");
   save = !conf || !feconf;
@@ -327,7 +325,6 @@ static void tvhdhomerun_device_create(struct hdhomerun_discover_device_t *dInfo)
         tvhlog(LOG_ERR, "tvhdhomerun", "Unable to create frontend-device. ( %08x-%d )", dInfo->device_id,j);
       }
   }
-  
 
   if (save)
     tvhdhomerun_device_save(hd);
@@ -360,7 +357,7 @@ tvhdhomerun_device_discovery( void )
           tvhdhomerun_device_create(cDev);
         }
       }
-    }  
+    }
   }
 }
 

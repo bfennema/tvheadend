@@ -124,7 +124,7 @@ static int get_token(CURL *curl, char *username, char *sha1_hex, char *token)
 	out = htsmsg_json_serialize_to_str(m, 0);
 	htsmsg_destroy(m);
 
-	curl_easy_setopt(curl, CURLOPT_URL, "https://json.schedulesdirect.org/20131021/token");
+	curl_easy_setopt(curl, CURLOPT_URL, "https://data2.schedulesdirect.org/20140530/token");
 	curl_easy_setopt(curl, CURLOPT_POST, 1L);
 	curl_easy_setopt(curl, CURLOPT_POSTFIELDS, out);
 #if 0
@@ -155,13 +155,50 @@ static int get_token(CURL *curl, char *username, char *sha1_hex, char *token)
 	return code;
 }
 
+static htsmsg_t *add_lineup(CURL *curl, const char *uri)
+{
+	char url[160];
+	int code = -1;
+	struct buffer buf = { 0, 0, NULL };
+	htsmsg_t *m;
+
+	snprintf(url, sizeof(url), "https://data2.schedulesdirect.org%s", uri);
+
+	curl_easy_setopt(curl, CURLOPT_URL, url);
+	curl_easy_setopt(curl, CURLOPT_UPLOAD, 1L);
+	curl_easy_setopt(curl, CURLOPT_INFILESIZE, 0L);
+	curl_easy_setopt(curl, CURLOPT_WRITEFUNCTION, write_callback);
+	curl_easy_setopt(curl, CURLOPT_WRITEDATA, &buf);
+
+	curl_easy_perform(curl);
+
+	if (buf.cur_size > 0)
+	{
+		buf.ptr[buf.cur_size] = '\0';
+		m = htsmsg_json_deserialize(buf.ptr);
+		if (m)
+		{
+			if (htsmsg_get_s32(m, "code", &code) || code != 0)
+			{
+				printf("add_lineup code error: %s\n", buf.ptr);
+				htsmsg_destroy(m);
+				m = NULL;
+			}
+		}
+		else
+			printf("add_lineup m error: %s\n", buf.ptr);
+	}
+	free(buf.ptr);
+	return m;
+}
+
 static htsmsg_t *get_status(CURL *curl)
 {
 	int code = -1;
 	struct buffer buf = { 0, 0, NULL };
 	htsmsg_t *m = NULL;
 
-	curl_easy_setopt(curl, CURLOPT_URL, "https://json.schedulesdirect.org/20131021/status");
+	curl_easy_setopt(curl, CURLOPT_URL, "https://data2.schedulesdirect.org/20140530/status");
 	curl_easy_setopt(curl, CURLOPT_HTTPGET, 1L);
 	curl_easy_setopt(curl, CURLOPT_WRITEFUNCTION, write_callback);
 	curl_easy_setopt(curl, CURLOPT_WRITEDATA, &buf);
@@ -188,13 +225,46 @@ static htsmsg_t *get_status(CURL *curl)
 	return m;
 }
 
+static htsmsg_t *get_lineups(CURL *curl)
+{
+	int code = -1;
+	struct buffer buf = { 0, 0, NULL };
+	htsmsg_t *m = NULL;
+
+	curl_easy_setopt(curl, CURLOPT_URL, "https://data2.schedulesdirect.org/20140530/lineups");
+	curl_easy_setopt(curl, CURLOPT_HTTPGET, 1L);
+	curl_easy_setopt(curl, CURLOPT_WRITEFUNCTION, write_callback);
+	curl_easy_setopt(curl, CURLOPT_WRITEDATA, &buf);
+
+	curl_easy_perform(curl);
+
+	if (buf.cur_size > 0)
+	{
+		buf.ptr[buf.cur_size] = '\0';
+		m = htsmsg_json_deserialize(buf.ptr);
+		if (m)
+		{
+			if (!htsmsg_get_s32(m, "code", &code) || code != 0)
+			{
+				printf("get_lineups code error: %s\n", buf.ptr);
+				htsmsg_destroy(m);
+				m = NULL;
+			}
+		}
+		else
+			printf("get_lineups m error: %s\n", buf.ptr);
+	}
+	free(buf.ptr);
+	return m;
+}
+
 static htsmsg_t *get_stations(CURL *curl, const char *uri)
 {
 	struct buffer buf = { 0, 0, NULL };
 	char url[160];
 	htsmsg_t *m;
 
-	snprintf(url, sizeof(url), "https://json.schedulesdirect.org%s", uri);
+	snprintf(url, sizeof(url), "https://data2.schedulesdirect.org%s", uri);
 
 	curl_easy_setopt(curl, CURLOPT_URL, url);
 	curl_easy_setopt(curl, CURLOPT_HTTPGET, 1L);
@@ -221,12 +291,10 @@ static htsmsg_t *get_schedules(CURL *curl, htsmsg_t *l)
 	htsmsg_t *m;
 	const char *id;
 
-	m = htsmsg_create_map();
-	htsmsg_add_msg(m, "request", l);
-	out = htsmsg_json_serialize_to_str(m, 0);
-	htsmsg_destroy(m);
+	out = htsmsg_json_serialize_to_str(l, 0);
+	htsmsg_destroy(l);
 
-	curl_easy_setopt(curl, CURLOPT_URL, "https://json.schedulesdirect.org/20131021/schedules");
+	curl_easy_setopt(curl, CURLOPT_URL, "https://data2.schedulesdirect.org/20140530/schedules");
 	curl_easy_setopt(curl, CURLOPT_POST, 1L);
 	curl_easy_setopt(curl, CURLOPT_POSTFIELDS, out);
 	curl_easy_setopt(curl, CURLOPT_WRITEFUNCTION, program_callback);
@@ -264,12 +332,10 @@ static htsmsg_t *get_episodes(CURL *curl, htsmsg_t *l)
 	htsmsg_t *m;
 	const  char *id;
 
-	m = htsmsg_create_map();
-	htsmsg_add_msg(m, "request", l);
-	out = htsmsg_json_serialize_to_str(m, 0);
-	htsmsg_destroy(m);
+	out = htsmsg_json_serialize_to_str(l, 0);
+	htsmsg_destroy(l);
 
-	curl_easy_setopt(curl, CURLOPT_URL, "https://json.schedulesdirect.org/20131021/programs");
+	curl_easy_setopt(curl, CURLOPT_URL, "https://data2.schedulesdirect.org/20140530/programs");
 	curl_easy_setopt(curl, CURLOPT_POST, 1L);
 	curl_easy_setopt(curl, CURLOPT_POSTFIELDS, out);
 	curl_easy_setopt(curl, CURLOPT_WRITEFUNCTION, program_callback);
@@ -328,17 +394,22 @@ static int sd_parse_titles(
 {
 	int save = 0;
 	const char *title, *subtitle;
-	htsmsg_t *titles;
+	htsmsg_t *m, *titles;
+	htsmsg_field_t *f;
 
-	titles = htsmsg_get_map(episode, "titles");
+	titles = htsmsg_get_list(episode, "titles");
 
 	if (titles)
 	{
-		title = htsmsg_get_str(titles, "title120");
-
-		if (title)
+		HTSMSG_FOREACH(f, titles)
 		{
-			save |= epg_episode_set_title(ee, title, "en", mod);
+	                m = htsmsg_get_map_by_field(f);
+			title = htsmsg_get_str(m, "title120");
+
+			if (title)
+			{
+				save |= epg_episode_set_title(ee, title, "en", mod);
+			}
 		}
 	}
 
@@ -358,8 +429,8 @@ static int sd_parse_metadata(
 	htsmsg_t *episode)
 {
 	int save = 0;
-	htsmsg_t *metadata, *m, *tribune;
-	htsmsg_field_t *f;
+	htsmsg_t *metadata, *m, *provider;
+	htsmsg_field_t *f, *g;
 	int tmp;
 	epg_episode_num_t epnum;
 	memset(&epnum, 0, sizeof(epnum));
@@ -370,14 +441,19 @@ static int sd_parse_metadata(
 	        HTSMSG_FOREACH(f, metadata)
 	        {
 	                m = htsmsg_get_map_by_field(f);
-			tribune = htsmsg_get_map(m, "Tribune");
+			HTSMSG_FOREACH(g, m)
+			{
+				provider = htsmsg_get_map_by_field(g);
+				if (strcmp(g->hmf_name, "Tribune"))
+					printf("Provider: %s\n", g->hmf_name);
 
-			htsmsg_get_s32(tribune, "season", &tmp);
-			epnum.s_num = tmp;
-			htsmsg_get_s32(tribune, "episode", &tmp);
-			epnum.e_num = tmp;
+				htsmsg_get_s32(provider, "season", &tmp);
+				epnum.s_num = tmp;
+				htsmsg_get_s32(provider, "episode", &tmp);
+				epnum.e_num = tmp;
 
-			save |= epg_episode_set_epnum(ee, &epnum, mod);
+				save |= epg_episode_set_epnum(ee, &epnum, mod);
+			}
 	        }
 	}
 
@@ -833,7 +909,7 @@ static char *_sd_grab(void *mod)
 	struct curl_slist *chunk = NULL;
 	char token_header[40];
 	const char *uri, *sid;
-	htsmsg_t *m, *v, *c, *m2, *v2, *c2, *c3, *m3, *s, *l;
+	htsmsg_t *m, *v, *c, *m2, *v2, *c2, *c3, *m3, *s, *l, *n;
 	htsmsg_field_t *f, *f2;
 	uint32_t major, minor, freq;
 	epggrab_channel_t *ch;
@@ -876,6 +952,17 @@ static char *_sd_grab(void *mod)
 	}
 
 	v = htsmsg_get_list(m, "lineups");
+	if (!TAILQ_FIRST(&v->hm_fields))
+	{
+		htsmsg_destroy(m);
+
+		add_lineup(curl, "/20140530/lineups/USA-OTA-94024");
+
+		m = get_lineups(curl);
+
+		v = htsmsg_get_list(m, "lineups");
+	}
+
 	l = htsmsg_create_list();
 
 	HTSMSG_FOREACH(f, v)
@@ -944,7 +1031,10 @@ static char *_sd_grab(void *mod)
 
 				if (LIST_FIRST(&ch->channels))
 				{
-					htsmsg_add_str(l, NULL, sid);
+					n = htsmsg_create_map();
+					htsmsg_add_str(n, "stationID", sid);
+					htsmsg_add_u32(n, "days", 13);
+					htsmsg_add_msg(l, NULL, n);
 					cnt ++;
 				}
 			}

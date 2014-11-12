@@ -124,7 +124,7 @@ static int get_token(CURL *curl, char *username, char *sha1_hex, char *token)
 	out = htsmsg_json_serialize_to_str(m, 0);
 	htsmsg_destroy(m);
 
-	curl_easy_setopt(curl, CURLOPT_URL, "https://data2.schedulesdirect.org/20140530/token");
+	curl_easy_setopt(curl, CURLOPT_URL, "https://json.schedulesdirect.org/20140530/token");
 	curl_easy_setopt(curl, CURLOPT_POST, 1L);
 	curl_easy_setopt(curl, CURLOPT_POSTFIELDS, out);
 #if 0
@@ -162,7 +162,7 @@ static htsmsg_t *add_lineup(CURL *curl, const char *uri)
 	struct buffer buf = { 0, 0, NULL };
 	htsmsg_t *m;
 
-	snprintf(url, sizeof(url), "https://data2.schedulesdirect.org%s", uri);
+	snprintf(url, sizeof(url), "https://json.schedulesdirect.org%s", uri);
 
 	curl_easy_setopt(curl, CURLOPT_URL, url);
 	curl_easy_setopt(curl, CURLOPT_UPLOAD, 1L);
@@ -198,7 +198,7 @@ static htsmsg_t *get_status(CURL *curl)
 	struct buffer buf = { 0, 0, NULL };
 	htsmsg_t *m = NULL;
 
-	curl_easy_setopt(curl, CURLOPT_URL, "https://data2.schedulesdirect.org/20140530/status");
+	curl_easy_setopt(curl, CURLOPT_URL, "https://json.schedulesdirect.org/20140530/status");
 	curl_easy_setopt(curl, CURLOPT_HTTPGET, 1L);
 	curl_easy_setopt(curl, CURLOPT_WRITEFUNCTION, write_callback);
 	curl_easy_setopt(curl, CURLOPT_WRITEDATA, &buf);
@@ -231,7 +231,7 @@ static htsmsg_t *get_lineups(CURL *curl)
 	struct buffer buf = { 0, 0, NULL };
 	htsmsg_t *m = NULL;
 
-	curl_easy_setopt(curl, CURLOPT_URL, "https://data2.schedulesdirect.org/20140530/lineups");
+	curl_easy_setopt(curl, CURLOPT_URL, "https://json.schedulesdirect.org/20140530/lineups");
 	curl_easy_setopt(curl, CURLOPT_HTTPGET, 1L);
 	curl_easy_setopt(curl, CURLOPT_WRITEFUNCTION, write_callback);
 	curl_easy_setopt(curl, CURLOPT_WRITEDATA, &buf);
@@ -264,7 +264,7 @@ static htsmsg_t *get_stations(CURL *curl, const char *uri)
 	char url[160];
 	htsmsg_t *m;
 
-	snprintf(url, sizeof(url), "https://data2.schedulesdirect.org%s", uri);
+	snprintf(url, sizeof(url), "https://json.schedulesdirect.org%s", uri);
 
 	curl_easy_setopt(curl, CURLOPT_URL, url);
 	curl_easy_setopt(curl, CURLOPT_HTTPGET, 1L);
@@ -294,7 +294,7 @@ static htsmsg_t *get_schedules(CURL *curl, htsmsg_t *l)
 	out = htsmsg_json_serialize_to_str(l, 0);
 	htsmsg_destroy(l);
 
-	curl_easy_setopt(curl, CURLOPT_URL, "https://data2.schedulesdirect.org/20140530/schedules");
+	curl_easy_setopt(curl, CURLOPT_URL, "https://json.schedulesdirect.org/20140530/schedules");
 	curl_easy_setopt(curl, CURLOPT_POST, 1L);
 	curl_easy_setopt(curl, CURLOPT_POSTFIELDS, out);
 	curl_easy_setopt(curl, CURLOPT_WRITEFUNCTION, program_callback);
@@ -335,7 +335,7 @@ static htsmsg_t *get_episodes(CURL *curl, htsmsg_t *l)
 	out = htsmsg_json_serialize_to_str(l, 0);
 	htsmsg_destroy(l);
 
-	curl_easy_setopt(curl, CURLOPT_URL, "https://data2.schedulesdirect.org/20140530/programs");
+	curl_easy_setopt(curl, CURLOPT_URL, "https://json.schedulesdirect.org/20140530/programs");
 	curl_easy_setopt(curl, CURLOPT_POST, 1L);
 	curl_easy_setopt(curl, CURLOPT_POSTFIELDS, out);
 	curl_easy_setopt(curl, CURLOPT_WRITEFUNCTION, program_callback);

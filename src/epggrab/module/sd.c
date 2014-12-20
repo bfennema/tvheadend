@@ -22,12 +22,9 @@
 
 static epggrab_channel_tree_t	_sd_channels;
 
-static int process_episode(void *mod, htsmsg_t *episode);
-
 typedef struct epggrab_module_sd
 {
 	epggrab_module_int_t mod;
-	char token[33];
 	char username[64];
 	char sha1_password[SHA_DIGEST_LENGTH*2+1];
 } epggrab_module_sd_t;
@@ -325,10 +322,10 @@ static htsmsg_t *get_schedules(CURL *curl, htsmsg_t *l)
 	return buf.m;
 }
 
-static htsmsg_t *get_episodes(CURL *curl, htsmsg_t *l)
+static htsmsg_t *get_episodes(CURL *curl, htsmsg_t *map, htsmsg_t *l)
 {
 	char *out;
-	struct program_buffer buf = { 0, 0, NULL, htsmsg_create_map(), "programID" };
+	struct program_buffer buf = { 0, 0, NULL, map, "programID" };
 	htsmsg_t *m;
 	const  char *id;
 
@@ -681,23 +678,16 @@ static int sd_parse_movie(
 
 static int process_episode(
 	void *mod,
+	epg_episode_t *ee,
+	char *uri,
 	htsmsg_t *episode)
 {
 	int save = 0;
 	const char *md5;
-	epg_episode_t *ee;
-	char uri[128];
-	const char *id;
 	epg_episode_num_t epnum;
 	memset(&epnum, 0, sizeof(epnum));
 
-	id = htsmsg_get_str(episode, "programID");
-
-	snprintf(uri, sizeof(uri)-1, "ddprogid://%s/%s", ((epggrab_module_t *)mod)->id, id);
-
-	ee = epg_episode_find_by_uri(uri, 0, &save);
-
-	if (sscanf(&id[10], "%hu", &epnum.e_num))
+	if (sscanf(&uri[10], "%hu", &epnum.e_num))
 	{
 		if (epnum.e_num)
 		{
@@ -814,12 +804,11 @@ static htsmsg_field_t *htsmsg_add_uniq_str(
 static int process_program(
 	void *mod,
 	channel_t *ch,
-	const char *station,
 	htsmsg_t *program,
-	htsmsg_t *l,
-	int *cnt)
+	htsmsg_t *episode,
+	epggrab_stats_t *stats)
 {
-	const char *id, *md5, *s;
+	const char *id, *s;
 	uint32_t duration;
 	int start, stop, save = 0, save2 = 0, save3 = 0;
 	epg_broadcast_t *ebc;
@@ -830,7 +819,6 @@ static int process_program(
 	epg_serieslink_t *es = NULL;
 
 	id = htsmsg_get_str(program, "programID");
-	md5 = htsmsg_get_str(program, "md5");
 	s = htsmsg_get_str(program, "airDateTime");
 	htsmsg_get_u32(program, "duration", &duration);
 
@@ -840,12 +828,10 @@ static int process_program(
 	if (stop <= start || stop <= dispatch_clock)
 		return 0;
 
-	pthread_mutex_lock(&global_lock);
 	if (!(ebc = epg_broadcast_find_by_time(ch, start, stop, 0, 1, &save)))
-	{
-		pthread_mutex_unlock(&global_lock);
 		return 0;
-	}
+	stats->broadcasts.total ++;
+	if (save) stats->broadcasts.created ++;
 
 	htsmsg_get_bool(program, "new", &is_new);
 	if (is_new)
@@ -862,43 +848,62 @@ static int process_program(
 
 		es = epg_serieslink_find_by_uri(suri, 1, &save2);
 		if (es)
+		{
+			stats->seasons.total ++;
+			if (save2) stats->seasons.created ++;
+
 			save |= epg_broadcast_set_serieslink(ebc, es, mod);
+		}
 	}
 
 	ee = epg_episode_find_by_uri(uri, 1, &save3);
 	if (ee)
-		save |= epg_broadcast_set_episode(ebc, ee, mod);
-	pthread_mutex_unlock(&global_lock);
-
-	save |= sd_parse_content_rating(mod, ee, program);
-
-	if (epg_episode_md5_cmp(ee, md5))
 	{
-		if (htsmsg_add_uniq_str(l, NULL, id) == NULL)
-			(*cnt) ++;
+		stats->episodes.total ++;
+		if (save3) stats->episodes.created ++;
+
+		save |= epg_broadcast_set_episode(ebc, ee, mod);
+
+		save |= sd_parse_content_rating(mod, ee, program);
+
+		save |= process_episode(mod, ee, uri, episode);
 	}
 
-	return save;
+	if (save) stats->broadcasts.modified ++;
+	if (save2) stats->seasons.modified ++;
+	if (save3) stats->episodes.modified ++;
+
+	return save | save2 | save3;
 }
 
 static void process_schedule(
 	void *mod,
-	channel_t *ch,
 	htsmsg_t *schedule,
 	htsmsg_t *l,
 	int *cnt)
 {
 	htsmsg_t *programs, *program;
 	htsmsg_field_t *f;
-	const char *id;
+	const char *program_id, *md5;
+	epg_episode_t *ee;
+	char uri[128];
+	int save = 0;
 
-	id = htsmsg_get_str(schedule, "stationID");
 	programs = htsmsg_get_list(schedule, "programs");
 	HTSMSG_FOREACH(f, programs)
 	{
 		program = htsmsg_get_map_by_field(f);
-		process_program(mod, ch, id, program, l, cnt);
 
+		program_id = htsmsg_get_str(program, "programID");
+		md5 = htsmsg_get_str(program, "md5");
+
+		snprintf(uri, sizeof(uri)-1, "ddprogid://%s/%s", ((epggrab_module_t *)mod)->id, program_id);
+		ee = epg_episode_find_by_uri(uri, 0, &save);
+		if (ee == NULL || epg_episode_md5_cmp(ee, md5))
+		{
+			if (htsmsg_add_uniq_str(l, NULL, program_id) == NULL)
+				(*cnt) ++;
+		}
 	}
 }
 
@@ -907,48 +912,104 @@ static char *_sd_grab(void *mod)
 	epggrab_module_sd_t *skel = (epggrab_module_sd_t *)mod;
 	CURL *curl;
 	struct curl_slist *chunk = NULL;
-	char token_header[40];
-	const char *uri, *sid;
-	htsmsg_t *m, *v, *c, *m2, *v2, *c2, *c3, *m3, *s, *l, *n;
-	htsmsg_field_t *f, *f2;
-	uint32_t major, minor, freq;
-	epggrab_channel_t *ch;
-	epggrab_channel_link_t *ecl;
-	char name[64];
-	int save = 0;
-	int cnt = 0;
+	char token[33];
+	char *ret;
 
 	curl = curl_easy_init();
 	chunk = curl_slist_append(chunk, "Content-Type: application/json;charset=UTF-8");
 	curl_easy_setopt(curl, CURLOPT_HTTPHEADER, chunk);
 	curl_easy_setopt(curl, CURLOPT_ENCODING, "");
+	curl_easy_setopt(curl, CURLOPT_USERAGENT, "benjamin.fennema@gmail.com (tvheadend)");
 
-	if (strlen(skel->token) == 0)
+	if (get_token(curl, skel->username, skel->sha1_password, token) != 0)
+		ret = NULL;
+	else
+		ret = token;
+
+	curl_slist_free_all(chunk);
+	curl_easy_cleanup(curl);
+
+	return ret;
+}
+
+
+static int _sd_parse(
+	void *mod,
+	htsmsg_t *data,
+	epggrab_stats_t *stats)
+{
+	epggrab_module_sd_t *skel = (epggrab_module_sd_t *)mod;
+	htsmsg_t *schedules, *episodes, *episode, *m, *programs, *program;
+	htsmsg_field_t *f, *f2;
+	const char *station_id, *program_id;
+	epggrab_channel_t *ch;
+	epggrab_channel_link_t *ecl;
+	int save = 0;
+
+	schedules = htsmsg_get_map(data, "schedules");
+	episodes = htsmsg_get_map(data, "episodes");
+
+	HTSMSG_FOREACH(f, schedules)
 	{
-		if (get_token(curl, skel->username, skel->sha1_password, skel->token) != 0)
-			skel->token[0] = '\0';
+		m = htsmsg_get_map_by_field(f);
+		station_id = htsmsg_get_str(m, "stationID");
+		programs = htsmsg_get_list(m, "programs");
+
+		ch = epggrab_channel_find(skel->mod.channels,
+			station_id, 0, &save,
+			(epggrab_module_t *)&skel->mod);
+
+		HTSMSG_FOREACH(f2, programs)
+		{
+			program = htsmsg_get_map_by_field(f2);
+			program_id = htsmsg_get_str(program, "programID");
+			episode = htsmsg_get_map(episodes, program_id);
+
+			LIST_FOREACH(ecl, &ch->channels, ecl_epg_link)
+			{
+				save |= process_program(mod, ecl->ecl_channel, program, episode, stats);
+			}
+		}
 	}
 
-	if (strlen(skel->token) == 0)
-	{
-		curl_slist_free_all(chunk);
-		curl_easy_cleanup(curl);
+	return save;
+}
 
+static htsmsg_t *_sd_trans(void *mod, char *data)
+{
+	epggrab_module_sd_t *skel = (epggrab_module_sd_t *)mod;
+	CURL *curl;
+	struct curl_slist *chunk = NULL;
+	char token_header[40];
+	const char *uri, *sid, *program_id;
+	htsmsg_t *m, *v, *c, *m2, *v2, *c2, *c3, *m3, *s, *l, *n, *t, *msg, *ret;
+	htsmsg_field_t *f, *f2;
+	uint32_t major, minor, freq;
+	epggrab_channel_t *ch;
+	char name[64];
+	int save = 0;
+	int cnt = 0;
+	int i;
+
+	if (data == NULL)
 		return NULL;
-	}
 
-	snprintf(token_header, sizeof(token_header), "Token: %s", skel->token);
+	curl = curl_easy_init();
+	chunk = curl_slist_append(chunk, "Content-Type: application/json;charset=UTF-8");
+	curl_easy_setopt(curl, CURLOPT_HTTPHEADER, chunk);
+	curl_easy_setopt(curl, CURLOPT_ENCODING, "");
+	curl_easy_setopt(curl, CURLOPT_USERAGENT, "benjamin.fennema@gmail.com (tvheadend)");
+
+	snprintf(token_header, sizeof(token_header), "Token: %s", data);
 	chunk = curl_slist_append(chunk, token_header);
 	curl_easy_setopt(curl, CURLOPT_HTTPHEADER, chunk);
 
 	if ((m = get_status(curl)) == NULL)
 	{
-		skel->token[0] = '\0';
-
 		curl_slist_free_all(chunk);
 		curl_easy_cleanup(curl);
 
-		return _sd_grab(mod);
+		return NULL;
 	}
 
 	v = htsmsg_get_list(m, "lineups");
@@ -976,8 +1037,6 @@ static char *_sd_grab(void *mod)
 
 			if ((v2 = htsmsg_get_list(m2, "stations")) == NULL)
 			{
-				skel->token[0] = '\0';
-
 				curl_slist_free_all(chunk);
 				curl_easy_cleanup(curl);
 
@@ -985,7 +1044,7 @@ static char *_sd_grab(void *mod)
 				htsmsg_destroy(m2);
 				htsmsg_destroy(m);
 
-				return _sd_grab(mod);
+				return NULL;
 			}
 
 			HTSMSG_FOREACH(f2, v2)
@@ -997,8 +1056,6 @@ static char *_sd_grab(void *mod)
 
 			if ((v2 = htsmsg_get_list(m2, "map")) == NULL)
 			{
-				skel->token[0] = '\0';
-
 				curl_slist_free_all(chunk);
 				curl_easy_cleanup(curl);
 
@@ -1006,7 +1063,7 @@ static char *_sd_grab(void *mod)
 				htsmsg_destroy(m2);
 				htsmsg_destroy(m);
 
-				return _sd_grab(mod);
+				return NULL;
 			}
 
 			HTSMSG_FOREACH(f2, v2)
@@ -1045,45 +1102,52 @@ static char *_sd_grab(void *mod)
 
 	htsmsg_destroy(m);
 
+	ret = htsmsg_create_map();
+
 	if (cnt > 0)
 	{
-		htsmsg_t *msg;
 		tvhlog(LOG_INFO, "sd", "Downloading %d schedules\n", cnt);
 		msg = get_schedules(curl, l);
 		cnt = 0;
 
 		l = htsmsg_create_list();
 
+		pthread_mutex_lock(&global_lock);
+
 		HTSMSG_FOREACH(f, msg)
 		{
 			m = htsmsg_get_map_by_field(f);
-			sid = htsmsg_get_str(m, "stationID");
 
-			ch = epggrab_channel_find(skel->mod.channels,
-				sid, 0, &save,
-				(epggrab_module_t *)&skel->mod);
-
-			LIST_FOREACH(ecl, &ch->channels, ecl_epg_link)
-			{
-				process_schedule(mod, ecl->ecl_channel, m, l, &cnt);
-			}
+			process_schedule(mod, m, l, &cnt);
 		}
+
+		pthread_mutex_unlock(&global_lock);
+
+		htsmsg_add_msg(ret, "schedules", msg);
 	}
+	else
+		htsmsg_destroy(l);
 
 	if (cnt > 0)
 	{
-		htsmsg_t *msg;
 		tvhlog(LOG_INFO, "sd", "Downloading %d episodes\n", cnt);
-		msg = get_episodes(curl, l);
-		pthread_mutex_lock(&global_lock);
-		HTSMSG_FOREACH(f, msg)
+		msg = htsmsg_create_map();
+		t = htsmsg_create_list();
+		i = 0;
+		HTSMSG_FOREACH(f, l)
 		{
-			m = htsmsg_get_map_by_field(f);
-			process_episode(mod, m);
+			if (i >= 5000)
+			{
+				get_episodes(curl, msg, t);
+				t = htsmsg_create_list();
+				i = 0;
+			}
+			i++;
+			program_id = htsmsg_field_get_str(f);
+			htsmsg_add_str(t, 0, program_id);
 		}
-		htsmsg_destroy(msg);
-		epg_updated();
-		pthread_mutex_unlock(&global_lock);
+		get_episodes(curl, msg, t);
+		htsmsg_add_msg(ret, "episodes", msg);
 	}
 	else
 		htsmsg_destroy(l);
@@ -1091,20 +1155,7 @@ static char *_sd_grab(void *mod)
 	curl_slist_free_all(chunk);
 	curl_easy_cleanup(curl);
 
-	return NULL;
-}
-
-static int _sd_parse(
-	void *mod,
-	htsmsg_t *data,
-	epggrab_stats_t *stats)
-{
-	return 0;
-}
-
-static htsmsg_t *_sd_trans(void *mod, char *data)
-{
-	return NULL;
+	return ret;
 }
 
 void sd_init(void)

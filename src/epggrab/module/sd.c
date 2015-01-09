@@ -423,14 +423,13 @@ static int sd_parse_titles(
 static int sd_parse_metadata(
 	void *mod,
 	epg_episode_t *ee,
+	epg_episode_num_t *epnum,
 	htsmsg_t *episode)
 {
 	int save = 0;
 	htsmsg_t *metadata, *m, *provider;
 	htsmsg_field_t *f, *g;
 	int tmp;
-	epg_episode_num_t epnum;
-	memset(&epnum, 0, sizeof(epnum));
 
 	metadata = htsmsg_get_list(episode, "metadata");
 	if (metadata)
@@ -445,11 +444,11 @@ static int sd_parse_metadata(
 					printf("Provider: %s\n", g->hmf_name);
 
 				htsmsg_get_s32(provider, "season", &tmp);
-				epnum.s_num = tmp;
+				epnum->s_num = tmp;
 				htsmsg_get_s32(provider, "episode", &tmp);
-				epnum.e_num = tmp;
+				epnum->e_num = tmp;
 
-				save |= epg_episode_set_epnum(ee, &epnum, mod);
+				save |= epg_episode_set_epnum(ee, epnum, mod);
 			}
 	        }
 	}
@@ -679,19 +678,18 @@ static int sd_parse_movie(
 static int process_episode(
 	void *mod,
 	epg_episode_t *ee,
+	epg_episode_num_t *epnum,
 	char *uri,
 	htsmsg_t *episode)
 {
 	int save = 0;
 	const char *md5;
-	epg_episode_num_t epnum;
-	memset(&epnum, 0, sizeof(epnum));
 
-	if (sscanf(&uri[10], "%hu", &epnum.e_num))
+	if (sscanf(&uri[10], "%hu", &epnum->e_num))
 	{
-		if (epnum.e_num)
+		if (epnum->e_num)
 		{
-			save |= epg_episode_set_epnum(ee, &epnum, mod);
+			save |= epg_episode_set_epnum(ee, epnum, mod);
 		}
 	}
 
@@ -701,7 +699,7 @@ static int process_episode(
 
 	save |= sd_parse_titles(mod, ee, episode);
 
-	save |= sd_parse_metadata(mod, ee, episode);
+	save |= sd_parse_metadata(mod, ee, epnum, episode);
 
 	save |= sd_parse_description(mod, ee, episode);
 
@@ -712,6 +710,27 @@ static int process_episode(
 	save |= sd_parse_air_date(mod, ee, episode);
 
 	save |= sd_parse_movie(mod, ee, episode);
+
+	return save;
+}
+
+static int sd_parse_multipart(
+	void *mod,
+	epg_episode_num_t *epnum,
+	htsmsg_t *program)
+{
+	int save = 0;
+	htsmsg_t *multipart;
+	int tmp;
+
+	multipart = htsmsg_get_map(program, "multipart");
+	if (multipart)
+	{
+		htsmsg_get_s32(multipart, "partNumber", &tmp);
+		epnum->p_num = tmp;
+		htsmsg_get_s32(multipart, "totalParts", &tmp);
+		epnum->p_cnt = tmp;
+	}
 
 	return save;
 }
@@ -817,6 +836,9 @@ static int process_program(
 	char suri[128];
 	epg_episode_t *ee = NULL;
 	epg_serieslink_t *es = NULL;
+	epg_episode_num_t epnum;
+
+	memset(&epnum, 0, sizeof(epnum));
 
 	id = htsmsg_get_str(program, "programID");
 	s = htsmsg_get_str(program, "airDateTime");
@@ -836,6 +858,8 @@ static int process_program(
 	htsmsg_get_bool(program, "new", &is_new);
 	if (is_new)
 		save |= epg_broadcast_set_is_new(ebc, 1, mod);
+
+	save |= sd_parse_multipart(mod, &epnum, program);
 
 	save |= sd_parse_audio(mod, ebc, program);
 
@@ -866,7 +890,7 @@ static int process_program(
 
 		save |= sd_parse_content_rating(mod, ee, program);
 
-		save |= process_episode(mod, ee, uri, episode);
+		save |= process_episode(mod, ee, &epnum, uri, episode);
 	}
 
 	if (save) stats->broadcasts.modified ++;
@@ -884,9 +908,11 @@ static void process_schedule(
 {
 	htsmsg_t *programs, *program;
 	htsmsg_field_t *f;
-	const char *program_id, *md5;
+	const char *program_id, *s, *md5;
 	epg_episode_t *ee;
 	char uri[128];
+	int start, stop;
+	uint32_t duration;
 	int save = 0;
 
 	programs = htsmsg_get_list(schedule, "programs");
@@ -895,14 +921,22 @@ static void process_schedule(
 		program = htsmsg_get_map_by_field(f);
 
 		program_id = htsmsg_get_str(program, "programID");
+		s = htsmsg_get_str(program, "airDateTime");
+		htsmsg_get_u32(program, "duration", &duration);
 		md5 = htsmsg_get_str(program, "md5");
 
-		snprintf(uri, sizeof(uri)-1, "ddprogid://%s/%s", ((epggrab_module_t *)mod)->id, program_id);
-		ee = epg_episode_find_by_uri(uri, 0, &save);
-		if (ee == NULL || epg_episode_md5_cmp(ee, md5))
+		start = _sp_str2time(s);
+		stop = start + duration;
+
+		if (stop > start && stop > dispatch_clock)
 		{
-			if (htsmsg_add_uniq_str(l, NULL, program_id) == NULL)
-				(*cnt) ++;
+			snprintf(uri, sizeof(uri)-1, "ddprogid://%s/%s", ((epggrab_module_t *)mod)->id, program_id);
+			ee = epg_episode_find_by_uri(uri, 0, &save);
+			if (ee == NULL || epg_episode_md5_cmp(ee, md5))
+			{
+				if (htsmsg_add_uniq_str(l, NULL, program_id) == NULL)
+					(*cnt) ++;
+			}
 		}
 	}
 }

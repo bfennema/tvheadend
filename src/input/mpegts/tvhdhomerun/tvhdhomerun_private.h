@@ -113,8 +113,6 @@ struct tvhdhomerun_frontend
    * Reception
    */
   unsigned long                  hf_pid_filter[0x2000/(sizeof(unsigned long)<<3)];
-  int                            hf_pid_filter_change;
-
   gtimer_t                       hf_monitor_timer;
 
   mpegts_mux_instance_t         *hf_mmi;

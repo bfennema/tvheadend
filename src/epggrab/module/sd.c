@@ -281,6 +281,34 @@ static htsmsg_t *get_stations(CURL *curl, const char *uri)
 	return m;
 }
 
+static htsmsg_t *get_schedules_md5(CURL *curl, htsmsg_t *l)
+{
+	char *out;
+	struct buffer buf = { 0, 0, NULL };
+	htsmsg_t *m;
+
+	out = htsmsg_json_serialize_to_str(l, 0);
+	htsmsg_destroy(l);
+
+	curl_easy_setopt(curl, CURLOPT_URL, "https://json.schedulesdirect.org/20140530/schedules/md5");
+	curl_easy_setopt(curl, CURLOPT_POST, 1L);
+	curl_easy_setopt(curl, CURLOPT_POSTFIELDS, out);
+	curl_easy_setopt(curl, CURLOPT_WRITEFUNCTION, write_callback);
+	curl_easy_setopt(curl, CURLOPT_WRITEDATA, &buf);
+
+	curl_easy_perform(curl);
+
+	buf.ptr[buf.cur_size] = '\0';
+	m = htsmsg_json_deserialize(buf.ptr);
+	if (m == NULL)
+	{
+		printf("get_schedules_md5() error: len=%d, ptr=%s\n", buf.cur_size, buf.ptr);
+	}
+	free(buf.ptr);
+
+	return m;
+}
+
 static htsmsg_t *get_schedules(CURL *curl, htsmsg_t *l)
 {
 	char *out;
@@ -693,23 +721,26 @@ static int process_episode(
 		}
 	}
 
-	md5 = htsmsg_get_str(episode, "md5");
+	if (episode)
+	{
+		md5 = htsmsg_get_str(episode, "md5");
 
-	save |= epg_episode_set_md5(ee, md5, mod);
+		save |= epg_episode_set_md5(ee, md5, mod);
 
-	save |= sd_parse_titles(mod, ee, episode);
+		save |= sd_parse_titles(mod, ee, episode);
 
-	save |= sd_parse_metadata(mod, ee, epnum, episode);
+		save |= sd_parse_metadata(mod, ee, epnum, episode);
 
-	save |= sd_parse_description(mod, ee, episode);
+		save |= sd_parse_description(mod, ee, episode);
 
-	save |= sd_parse_genre(mod, ee, episode);
+		save |= sd_parse_genre(mod, ee, episode);
 
-	save |= sd_parse_content_rating(mod, ee, episode);
+		save |= sd_parse_content_rating(mod, ee, episode);
 
-	save |= sd_parse_air_date(mod, ee, episode);
+		save |= sd_parse_air_date(mod, ee, episode);
 
-	save |= sd_parse_movie(mod, ee, episode);
+		save |= sd_parse_movie(mod, ee, episode);
+	}
 
 	return save;
 }
@@ -900,6 +931,41 @@ static int process_program(
 	return save | save2 | save3;
 }
 
+static void process_schedule_md5(
+	void *mod,
+	htsmsg_field_t *f,
+	htsmsg_t *l,
+	int *cnt)
+{
+	epggrab_module_sd_t *skel = (epggrab_module_sd_t *)mod;
+	htsmsg_t *m, *m2, *m3;
+	htsmsg_field_t *f2;
+	const char *station_id, *md5;
+	int save = 0;
+	epggrab_channel_t *ch;
+
+	station_id = f->hmf_name;
+	m = htsmsg_get_list_by_field(f);
+	ch = epggrab_channel_find(skel->mod.channels,
+		station_id, 0, &save,
+		(epggrab_module_t *)&skel->mod);
+
+	HTSMSG_FOREACH(f2, m)
+	{
+		m2 = htsmsg_get_map_by_field(f2);
+		md5 = htsmsg_get_str(m2, "md5");
+
+		if (ch->md5 && strcmp(ch->md5, md5) == 0)
+			return;
+	}
+
+	m3 = htsmsg_create_map();
+	htsmsg_add_str(m3, "stationID", station_id);
+	htsmsg_add_u32(m3, "days", 13);
+	htsmsg_add_msg(l, NULL, m3);
+	(*cnt) ++;
+}
+
 static void process_schedule(
 	void *mod,
 	htsmsg_t *schedule,
@@ -914,28 +980,37 @@ static void process_schedule(
 	int start, stop;
 	uint32_t duration;
 	int save = 0;
+	int code = -1;
 
-	programs = htsmsg_get_list(schedule, "programs");
-	HTSMSG_FOREACH(f, programs)
+	if (!htsmsg_get_s32(schedule, "code", &code))
 	{
-		program = htsmsg_get_map_by_field(f);
-
-		program_id = htsmsg_get_str(program, "programID");
-		s = htsmsg_get_str(program, "airDateTime");
-		htsmsg_get_u32(program, "duration", &duration);
-		md5 = htsmsg_get_str(program, "md5");
-
-		start = _sp_str2time(s);
-		stop = start + duration;
-
-		if (stop > start && stop > dispatch_clock)
+		printf("Error: code=%d\n", code);
+		htsmsg_print(schedule);
+	}
+	else
+	{
+		programs = htsmsg_get_list(schedule, "programs");
+		HTSMSG_FOREACH(f, programs)
 		{
-			snprintf(uri, sizeof(uri)-1, "ddprogid://%s/%s", ((epggrab_module_t *)mod)->id, program_id);
-			ee = epg_episode_find_by_uri(uri, 0, &save);
-			if (ee == NULL || epg_episode_md5_cmp(ee, md5))
+			program = htsmsg_get_map_by_field(f);
+
+			program_id = htsmsg_get_str(program, "programID");
+			s = htsmsg_get_str(program, "airDateTime");
+			htsmsg_get_u32(program, "duration", &duration);
+			md5 = htsmsg_get_str(program, "md5");
+
+			start = _sp_str2time(s);
+			stop = start + duration;
+
+			if (stop > start && stop > dispatch_clock)
 			{
-				if (htsmsg_add_uniq_str(l, NULL, program_id) == NULL)
-					(*cnt) ++;
+				snprintf(uri, sizeof(uri)-1, "ddprogid://%s/%s", ((epggrab_module_t *)mod)->id, program_id);
+				ee = epg_episode_find_by_uri(uri, 0, &save);
+				if (ee == NULL || epg_episode_md5_cmp(ee, md5))
+				{
+					if (htsmsg_add_uniq_str(l, NULL, program_id) == NULL)
+						(*cnt) ++;
+				}
 			}
 		}
 	}
@@ -973,40 +1048,57 @@ static int _sd_parse(
 	epggrab_stats_t *stats)
 {
 	epggrab_module_sd_t *skel = (epggrab_module_sd_t *)mod;
-	htsmsg_t *schedules, *episodes, *episode, *m, *programs, *program;
+	htsmsg_t *schedules, *episodes, *episode, *m, *programs, *program, *metadata;
 	htsmsg_field_t *f, *f2;
-	const char *station_id, *program_id;
+	const char *station_id, *program_id, *md5;
 	epggrab_channel_t *ch;
 	epggrab_channel_link_t *ecl;
-	int save = 0;
+	int save = 0, save2 = 0;
+	int code = -1;
 
 	schedules = htsmsg_get_map(data, "schedules");
 	episodes = htsmsg_get_map(data, "episodes");
 
-	HTSMSG_FOREACH(f, schedules)
+	if (schedules && episodes)
 	{
-		m = htsmsg_get_map_by_field(f);
-		station_id = htsmsg_get_str(m, "stationID");
-		programs = htsmsg_get_list(m, "programs");
-
-		ch = epggrab_channel_find(skel->mod.channels,
-			station_id, 0, &save,
-			(epggrab_module_t *)&skel->mod);
-
-		HTSMSG_FOREACH(f2, programs)
+		HTSMSG_FOREACH(f, schedules)
 		{
-			program = htsmsg_get_map_by_field(f2);
-			program_id = htsmsg_get_str(program, "programID");
-			episode = htsmsg_get_map(episodes, program_id);
+			m = htsmsg_get_map_by_field(f);
 
-			LIST_FOREACH(ecl, &ch->channels, ecl_epg_link)
+			if (htsmsg_get_s32(m, "code", &code))
 			{
-				save |= process_program(mod, ecl->ecl_channel, program, episode, stats);
+				station_id = htsmsg_get_str(m, "stationID");
+				programs = htsmsg_get_list(m, "programs");
+				metadata = htsmsg_get_map(m, "metadata");
+				md5 = htsmsg_get_str(metadata, "md5");
+
+				ch = epggrab_channel_find(skel->mod.channels,
+					station_id, 0, &save,
+					(epggrab_module_t *)&skel->mod);
+				stats->channels.total ++;
+				save |= epggrab_channel_set_md5(ch, md5);
+				if (save)
+				{
+					epggrab_channel_updated(ch);
+					stats->channels.modified ++;
+				}
+
+				HTSMSG_FOREACH(f2, programs)
+				{
+					program = htsmsg_get_map_by_field(f2);
+					program_id = htsmsg_get_str(program, "programID");
+					episode = htsmsg_get_map(episodes, program_id);
+
+					LIST_FOREACH(ecl, &ch->channels, ecl_epg_link)
+					{
+						save2 |= process_program(mod, ecl->ecl_channel, program, episode, stats);
+					}
+				}
 			}
 		}
 	}
 
-	return save;
+	return save | save2;
 }
 
 static htsmsg_t *_sd_trans(void *mod, char *data)
@@ -1140,6 +1232,21 @@ static htsmsg_t *_sd_trans(void *mod, char *data)
 
 	if (cnt > 0)
 	{
+		tvhlog(LOG_INFO, "sd", "Downloading %d schedule md5s\n", cnt);
+		msg = get_schedules_md5(curl, l);
+
+		cnt = 0;
+		l = htsmsg_create_list();
+
+		HTSMSG_FOREACH(f, msg)
+		{
+			process_schedule_md5(mod, f, l, &cnt);
+		}
+		htsmsg_destroy(msg);
+	}
+
+	if (cnt > 0)
+	{
 		tvhlog(LOG_INFO, "sd", "Downloading %d schedules\n", cnt);
 		msg = get_schedules(curl, l);
 		cnt = 0;
@@ -1159,8 +1266,6 @@ static htsmsg_t *_sd_trans(void *mod, char *data)
 
 		htsmsg_add_msg(ret, "schedules", msg);
 	}
-	else
-		htsmsg_destroy(l);
 
 	if (cnt > 0)
 	{

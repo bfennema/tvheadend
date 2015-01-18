@@ -27,6 +27,8 @@ typedef struct epggrab_module_sd
 	epggrab_module_int_t mod;
 	char username[64];
 	char sha1_password[SHA_DIGEST_LENGTH*2+1];
+	int flush;
+	time_t update;
 } epggrab_module_sd_t;
 
 struct buffer
@@ -707,13 +709,13 @@ static int process_episode(
 	void *mod,
 	epg_episode_t *ee,
 	epg_episode_num_t *epnum,
-	char *uri,
+	const char *id,
 	htsmsg_t *episode)
 {
 	int save = 0;
 	const char *md5;
 
-	if (sscanf(&uri[10], "%hu", &epnum->e_num))
+	if (sscanf(&id[10], "%hu", &epnum->e_num))
 	{
 		if (epnum->e_num)
 		{
@@ -922,7 +924,7 @@ static int process_program(
 
 		save |= sd_parse_content_rating(mod, ee, program);
 
-		save |= process_episode(mod, ee, &epnum, uri, episode);
+		save |= process_episode(mod, ee, &epnum, id, episode);
 	}
 
 	if (save) stats->broadcasts.modified ++;
@@ -956,7 +958,7 @@ static void process_schedule_md5(
 		m2 = htsmsg_get_map_by_field(f2);
 		md5 = htsmsg_get_str(m2, "md5");
 
-		if (ch->md5 && strcmp(ch->md5, md5) == 0)
+		if (!skel->flush && ch->md5 && strcmp(ch->md5, md5) == 0)
 			return;
 	}
 
@@ -973,6 +975,7 @@ static void process_schedule(
 	htsmsg_t *l,
 	int *cnt)
 {
+	epggrab_module_sd_t *skel = (epggrab_module_sd_t *)mod;
 	htsmsg_t *programs, *program;
 	htsmsg_field_t *f;
 	const char *program_id, *s, *md5;
@@ -1007,7 +1010,7 @@ static void process_schedule(
 			{
 				snprintf(uri, sizeof(uri)-1, "ddprogid://%s/%s", ((epggrab_module_t *)mod)->id, program_id);
 				ee = epg_episode_find_by_uri(uri, 0, &save);
-				if (ee == NULL || epg_episode_md5_cmp(ee, md5))
+				if (skel->flush || ee == NULL || epg_episode_md5_cmp(ee, md5))
 				{
 					if (htsmsg_add_uniq_str(l, NULL, program_id) == NULL)
 						(*cnt) ++;
@@ -1100,6 +1103,19 @@ static int _sd_parse(
 				}
 			}
 		}
+	}
+
+	if (skel->flush)
+	{
+		m = htsmsg_create_map();
+		skel->flush = 0;
+
+		htsmsg_add_str(m, "username", skel->username);
+		htsmsg_add_str(m, "password", skel->sha1_password);
+		htsmsg_add_bool(m, "flush", skel->flush);
+		htsmsg_add_u32(m, "update", skel->update);
+
+		hts_settings_save(m, "epggrab/%s/config", ((epggrab_module_t *)mod)->id);
 	}
 
 	return save | save2;
@@ -1305,6 +1321,7 @@ void sd_init(void)
 {
 	epggrab_module_sd_t *skel = calloc(1, sizeof(epggrab_module_sd_t));
 	htsmsg_t *m;
+	const char *username, *password;
 
 	curl_global_init(CURL_GLOBAL_DEFAULT);
 
@@ -1312,9 +1329,15 @@ void sd_init(void)
 
 	if (m)
 	{
+		username = htsmsg_get_str(m, "username");
+		password = htsmsg_get_str(m, "password");
+		skel->flush = htsmsg_get_bool_or_default(m, "flush", 0);
+		skel->update = htsmsg_get_u32_or_default(m, "update", dispatch_clock);
 
-		strcpy(skel->username, htsmsg_get_str(m, "username"));
-		strcpy(skel->sha1_password, htsmsg_get_str(m, "password"));
+		if (username)
+			strcpy(skel->username, username);
+		if (password)
+			strcpy(skel->sha1_password, password);
 
 		htsmsg_destroy(m);
 	}

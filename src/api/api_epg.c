@@ -112,11 +112,7 @@ api_epg_entry ( epg_broadcast_t *eb, const char *lang, access_t *perm )
     htsmsg_add_str(m, "subtitle", s);
   if ((s = epg_broadcast_get_summary(eb, lang)))
     htsmsg_add_str(m, "summary", s);
-  else if (ee && (s = epg_episode_get_summary(ee, lang)))
-    htsmsg_add_str(m, "summary", s);
   if ((s = epg_broadcast_get_description(eb, lang)))
-    htsmsg_add_str(m, "description", s);
-  else if (ee && (s = epg_episode_get_description(ee, lang)))
     htsmsg_add_str(m, "description", s);
 
   /* Episode info */

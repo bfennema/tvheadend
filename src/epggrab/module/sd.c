@@ -486,7 +486,7 @@ static int sd_parse_metadata(
 
 static int sd_parse_description(
 	void *mod,
-	epg_episode_t *ee,
+	epg_broadcast_t *ebc,
 	htsmsg_t *episode)
 {
 	int save = 0;
@@ -507,7 +507,7 @@ static int sd_parse_description(
 				lang = htsmsg_get_str(m, "descriptionLanguage");
 				desc = htsmsg_get_str(m, "description");
 
-				save |= epg_episode_set_description(ee, desc, lang, mod);
+				save |= epg_broadcast_set_description(ebc, desc, lang, mod);
 			}
 		}
 
@@ -521,7 +521,7 @@ static int sd_parse_description(
 				lang = htsmsg_get_str(m, "descriptionLanguage");
 				desc = htsmsg_get_str(m, "description");
 
-				save |= epg_episode_set_summary(ee, desc, lang, mod);
+				save |= epg_broadcast_set_summary(ebc, desc, lang, mod);
 			}
 		}
 	}
@@ -731,8 +731,6 @@ static int process_episode(
 
 		save |= sd_parse_metadata(mod, ee, epnum, episode);
 
-		save |= sd_parse_description(mod, ee, episode);
-
 		save |= sd_parse_genre(mod, ee, episode);
 
 		save |= sd_parse_content_rating(mod, ee, episode);
@@ -895,6 +893,9 @@ static int process_program(
 	save |= sd_parse_audio(mod, ebc, program);
 
 	save |= sd_parse_video(mod, ebc, program);
+
+    if (episode)
+		save |= sd_parse_description(mod, ebc, episode);
 
 	snprintf(uri, sizeof(uri)-1, "ddprogid://%s/%s", ((epggrab_module_t *)mod)->id, id);
 	if (strncmp(id, "SH", 2) == 0 || strncmp(id, "EP", 2) == 0)

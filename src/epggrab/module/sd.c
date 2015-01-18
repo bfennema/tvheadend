@@ -894,7 +894,7 @@ static int process_program(
 
 	save |= sd_parse_video(mod, ebc, program);
 
-    if (episode)
+	if (episode)
 		save |= sd_parse_description(mod, ebc, episode);
 
 	snprintf(uri, sizeof(uri)-1, "ddprogid://%s/%s", ((epggrab_module_t *)mod)->id, id);
@@ -1060,7 +1060,7 @@ static int _sd_parse(
 	schedules = htsmsg_get_map(data, "schedules");
 	episodes = htsmsg_get_map(data, "episodes");
 
-	if (schedules && episodes)
+	if (schedules)
 	{
 		HTSMSG_FOREACH(f, schedules)
 		{
@@ -1088,7 +1088,10 @@ static int _sd_parse(
 				{
 					program = htsmsg_get_map_by_field(f2);
 					program_id = htsmsg_get_str(program, "programID");
-					episode = htsmsg_get_map(episodes, program_id);
+					if (episodes)
+						episode = htsmsg_get_map(episodes, program_id);
+					else
+						episode = NULL;
 
 					LIST_FOREACH(ecl, &ch->channels, ecl_epg_link)
 					{

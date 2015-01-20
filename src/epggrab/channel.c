@@ -276,7 +276,7 @@ htsmsg_t *epggrab_channel_list ( int ota )
   epggrab_channel_t *ec;
   htsmsg_t *e, *m;
   m = htsmsg_create_list();
-  LIST_FOREACH(mod, &epggrab_modules, link) {
+  LIST_FOREACH(mod, &epggrab_modules, em_link) {
     if (!ota && (mod->type == EPGGRAB_OTA)) continue;
     if (mod->channels) {
       RB_FOREACH(ec, mod->channels, link) {
@@ -296,7 +296,7 @@ htsmsg_t *epggrab_channel_list ( int ota )
 void epggrab_channel_add ( channel_t *ch )
 {
   epggrab_module_t *m;
-  LIST_FOREACH(m, &epggrab_modules, link) {
+  LIST_FOREACH(m, &epggrab_modules, em_link) {
     if (m->ch_add) m->ch_add(m, ch);
   }
 }
@@ -304,7 +304,7 @@ void epggrab_channel_add ( channel_t *ch )
 void epggrab_channel_rem ( channel_t *ch )
 {
   epggrab_module_t *m;
-  LIST_FOREACH(m, &epggrab_modules, link) {
+  LIST_FOREACH(m, &epggrab_modules, em_link) {
     if (m->ch_rem) m->ch_rem(m, ch);
   }
 }
@@ -312,7 +312,7 @@ void epggrab_channel_rem ( channel_t *ch )
 void epggrab_channel_mod ( channel_t *ch )
 {
   epggrab_module_t *m;
-  LIST_FOREACH(m, &epggrab_modules, link) {
+  LIST_FOREACH(m, &epggrab_modules, em_link) {
     if (m->ch_mod) m->ch_mod(m, ch);
   }
 }

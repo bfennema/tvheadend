@@ -20,16 +20,398 @@
 #include "epggrab.h"
 #include "epggrab/private.h"
 
+#define USERAGENT	"benjamin.fennema@gmail.com (tvheadend)"
+#define UPDATE_INTERVAL	(60*60*6)
+
 static epggrab_channel_tree_t	_sd_channels;
 
 typedef struct epggrab_module_sd
 {
 	epggrab_module_int_t mod;
-	char username[64];
-	char sha1_password[SHA_DIGEST_LENGTH*2+1];
+	const char *username;
+	const char *sha1_password;
 	int flush;
 	time_t update;
+	const char *status;
+	time_t expiration;
+	const char *country;
+	const char *zipcode;
+	int server_lineup[4];
+	int lineup[4];
+	htsmsg_t *lineups;
 } epggrab_module_sd_t;
+
+htsmsg_t *sd_get_token(epggrab_module_sd_t *skel, CURL **curl, struct curl_slist **chunk);
+static htsmsg_t *get_status(CURL *curl);
+static time_t _sp_str2time(const char *in);
+static htsmsg_t *get_headends(CURL *curl, const char *country, const char *zipcode);
+static htsmsg_t *delete_lineup(CURL *curl, const char *uri);
+static htsmsg_t *add_lineup(CURL *curl, const char *uri);
+
+static void
+sd_device_class_save ( idnode_t *in )
+{
+	epggrab_module_sd_t *skel = (epggrab_module_sd_t *)in;
+	htsmsg_t *m, *m2, *m3, *m4, *m5, *account, *lineups;
+	CURL *curl;
+	struct curl_slist *chunk;
+	const char *token = NULL;
+	char token_header[40];
+	int code;
+	const char *expiration, *update, *name, *location, *uri, *id;
+	htsmsg_field_t *f, *f2;
+	int lineup_cnt = 0;
+	int i, j, index;
+
+	if ((m = sd_get_token(skel, &curl, &chunk)))
+	{
+		if (!htsmsg_get_s32(m, "code", &code) && code == 0)
+		{
+			token = htsmsg_get_str(m, "token");
+
+			m2 = htsmsg_create_map();
+
+			htsmsg_add_str(m2, "username", skel->username);
+			htsmsg_add_str(m2, "password", skel->sha1_password);
+			htsmsg_add_bool(m2, "flush", skel->flush);
+			htsmsg_add_u32(m2, "update", skel->update);
+			htsmsg_add_str(m2, "uuid", idnode_uuid_as_str(in));
+
+			hts_settings_save(m2, "epggrab/%s/config", ((epggrab_module_t *)in)->id);
+			htsmsg_destroy(m2);
+		}
+
+		skel->status = strdup(htsmsg_get_str(m, "message") ?: "");
+
+		if (token)
+		{
+			snprintf(token_header, sizeof(token_header), "Token: %s", token);
+			chunk = curl_slist_append(chunk, token_header);
+			curl_easy_setopt(curl, CURLOPT_HTTPHEADER, chunk);
+
+			m2 = get_status(curl);
+			if ((update = htsmsg_get_str(m2, "lastDataUpdate")) != NULL)
+				skel->update = _sp_str2time(update) + UPDATE_INTERVAL;
+			account = htsmsg_get_map(m2, "account");
+			if ((expiration = htsmsg_get_str(account, "expires")) != NULL)
+				skel->expiration = _sp_str2time(expiration);
+
+			if ((lineups = htsmsg_get_list(m2, "lineups")) != NULL)
+			{
+				if (skel->lineups)
+				{
+				}
+				else
+				{
+					skel->lineups = htsmsg_create_map();
+					lineup_cnt = 0;
+					HTSMSG_FOREACH(f, lineups)
+					{
+						skel->lineup[lineup_cnt] = lineup_cnt + 1;
+						skel->server_lineup[lineup_cnt] = lineup_cnt + 1;
+						m3 = htsmsg_get_map_by_field(f);
+						m4 = htsmsg_create_map();
+						htsmsg_add_u32(m4, "index", ++lineup_cnt);
+						htsmsg_add_str(m4, "id", strdup(htsmsg_get_str(m3, "ID")));
+						htsmsg_add_str(m4, "modified", strdup(htsmsg_get_str(m3, "modified")));
+						htsmsg_add_msg(skel->lineups, strdup(htsmsg_get_str(m3, "uri")), m4);
+					}
+	
+				}
+			}
+			htsmsg_destroy(m2);
+
+			if (skel->country && skel->zipcode)
+			{
+				m2 = get_headends(curl, skel->country, skel->zipcode);
+				if (m2)
+				{
+					HTSMSG_FOREACH(f, m2)
+					{
+						m3 = htsmsg_get_map_by_field(f);
+						location = htsmsg_get_str(m3, "location");
+						lineups = htsmsg_get_list(m3, "lineups");
+
+						HTSMSG_FOREACH(f2, lineups)
+						{
+							m4 = htsmsg_get_map_by_field(f2);
+							name = htsmsg_get_str(m4, "name");
+							uri = htsmsg_get_str(m4, "uri");
+							id = uri + strlen("/20140530/lineups/");
+							if (!skel->lineups)
+								skel->lineups = htsmsg_create_map();
+							if ((m5 = htsmsg_get_map(skel->lineups, uri)) == NULL)
+							{
+								m5 = htsmsg_create_map();
+								htsmsg_add_s32(m5, "index", ++lineup_cnt);
+								htsmsg_add_str(m5, "id", strdup(id));
+								htsmsg_add_str(m5, "name", strdup(name));
+								htsmsg_add_str(m5, "location", strdup(location));
+								htsmsg_add_msg(skel->lineups, strdup(uri), m5);
+							}
+							else
+							{
+								htsmsg_add_str(m5, "name", strdup(name));
+								htsmsg_add_str(m5, "location", strdup(location));
+							}
+						}
+					}
+					htsmsg_destroy(m2);
+				}
+			}
+
+			if (skel->lineups)
+			{
+				for (i=0; i<4; i++)
+				{
+					for (j=0; j<4; j++)
+					{
+						if (skel->server_lineup[i] == skel->lineup[j])
+							break;
+					}
+					if (j == 4)
+					{
+						HTSMSG_FOREACH(f2, skel->lineups)
+						{
+							m2 = htsmsg_get_map_by_field(f2);
+							htsmsg_get_s32(m2, "index", &index);
+							if (index == skel->server_lineup[i])
+							{
+								m3 = delete_lineup(curl, f2->hmf_name);
+								printf("Delete:\n");
+								htsmsg_print(m3);
+								htsmsg_destroy(m3);
+								skel->server_lineup[i] = 0;
+								break;
+							}
+						}
+					}
+				}
+				for (i=0; i<4; i++)
+				{
+					for (j=0; j<4; j++)
+					{
+						if (skel->lineup[i] == skel->server_lineup[j])
+							break;
+					}
+					if (j == 4)
+					{
+						HTSMSG_FOREACH(f2, skel->lineups)
+						{
+							m2 = htsmsg_get_map_by_field(f2);
+							htsmsg_get_s32(m2, "index", &index);
+							if (index == skel->lineup[i])
+							{
+								m3 = add_lineup(curl, f2->hmf_name);
+								printf("Add:\n");
+								htsmsg_print(m3);
+								htsmsg_destroy(m3);
+								for (j=0; j<4; j++)
+								{
+									if (skel->server_lineup[j] == 0)
+										skel->server_lineup[j] = index;
+								}
+								break;
+							}
+						}
+					}
+				}
+			}
+		}
+		htsmsg_destroy(m);
+	}
+
+	curl_slist_free_all(chunk);
+	curl_easy_cleanup(curl);
+	
+}
+
+static const char *
+sd_device_class_get_title ( idnode_t *self )
+{
+	return "Schedules Direct";
+}
+
+static int
+sd_device_class_password_set( void *obj, const void *p )
+{
+  epggrab_module_sd_t *skel = obj;
+  unsigned char hash[SHA_DIGEST_LENGTH];
+  char sha1_password[SHA_DIGEST_LENGTH*2+1]; 
+  int i;
+
+  if (skel->sha1_password && strlen(skel->sha1_password) == SHA_DIGEST_LENGTH*2 && strncmp(skel->sha1_password, p, SHA_DIGEST_LENGTH*2) == 0)
+    return 1;
+
+  SHA1(p, strlen(p), hash);
+
+  for (i=0; i<SHA_DIGEST_LENGTH; i++)
+  {
+    sha1_password[i*2] = "0123456789abcdef"[hash[i] >> 4];
+    sha1_password[i*2+1] = "0123456789abcdef"[hash[i] & 0x0F];
+  }
+  sha1_password[SHA_DIGEST_LENGTH*2] = '\0';
+  skel->sha1_password = strdup(sha1_password);
+  return 1;
+}
+
+static htsmsg_t *
+sd_device_class_headend_list(void * obj)
+{
+  epggrab_module_sd_t *skel = obj;
+  htsmsg_t *l, *m, *m2;
+  htsmsg_field_t *f;
+  const char *name, *location, *id;
+  char buf[80];
+  int index = -1;
+
+  l = htsmsg_create_list();
+
+  m2 = htsmsg_create_map();
+
+  htsmsg_add_s32(m2, "key", 0);
+  htsmsg_add_str(m2, "val", "Unused");
+  htsmsg_add_msg(l, NULL, m2);
+
+  if (skel && skel->lineups)
+  {
+    HTSMSG_FOREACH(f, skel->lineups)
+    {
+      m = htsmsg_get_map_by_field(f);
+      m2 = htsmsg_create_map();
+
+      htsmsg_get_s32(m, "index", &index);
+      htsmsg_add_s32(m2, "key", index);
+      name = htsmsg_get_str(m, "name");
+      location = htsmsg_get_str(m, "location");
+      id = htsmsg_get_str(m, "id");
+      if (name && location)
+      {
+        sprintf(buf, "%s (%s)", name, location);
+        htsmsg_add_str(m2, "val", strdup(buf));
+      }
+      else if (name)
+        htsmsg_add_str(m2, "val", name);
+      else
+        htsmsg_add_str(m2, "val", id);
+
+      htsmsg_add_msg(l, NULL, m2);
+    }
+  }
+
+  return l;
+}
+
+const idclass_t epggrab_sd_device_class = {
+  .ic_class      = "epggrab_sd_client",
+  .ic_caption    = "Schedules Direct",
+  .ic_save       = sd_device_class_save,
+  .ic_get_title  = sd_device_class_get_title,
+  .ic_groups     = (const property_group_t[])
+  {
+    {
+      .name      = "Account Information",
+      .number    = 1,
+    },
+    {
+      .name      = "Configure Lineup",
+      .number    = 2,
+    },
+    {}
+  },
+  .ic_properties = (const property_t[])
+  {
+    {
+      .type      = PT_STR,
+      .id        = "username",
+      .name      = "Username",
+      .off       = offsetof(epggrab_module_sd_t, username),
+      .group     = 1,
+    },
+    {
+      .type      = PT_STR,
+      .id        = "password",
+      .name      = "Password",
+      .opts      = PO_PASSWORD,
+      .set       = sd_device_class_password_set,
+      .off       = offsetof(epggrab_module_sd_t, sha1_password),
+      .group     = 1,
+    },
+    {
+      .type      = PT_TIME,
+      .id        = "update",
+      .name      = "Next Update",
+      .opts      = PO_RDONLY,
+      .off       = offsetof(epggrab_module_sd_t, update),
+      .group     = 1,
+    },
+    {
+      .type      = PT_STR,
+      .id        = "status",
+      .name      = "Status",
+      .opts      = PO_RDONLY,
+      .off       = offsetof(epggrab_module_sd_t, status),
+      .group     = 1,
+    },
+    {
+      .type      = PT_TIME,
+      .id        = "expiration",
+      .name      = "Account Expiration",
+      .opts      = PO_RDONLY,
+      .off       = offsetof(epggrab_module_sd_t, expiration),
+      .group     = 1,
+    },
+    {
+      .type      = PT_STR,
+      .id        = "country",
+      .name      = "Country",
+      .opts      = PO_NOSAVE,
+      .off       = offsetof(epggrab_module_sd_t, country),
+      .group     = 2,
+    },
+    {
+      .type      = PT_STR,
+      .id        = "zipcode",
+      .name      = "Zipode",
+      .opts      = PO_NOSAVE,
+      .off       = offsetof(epggrab_module_sd_t, zipcode),
+      .group     = 2,
+    },
+    {
+      .type      = PT_INT,
+      .id        = "lineup1",
+      .name      = "Lineup 1",
+      .off       = offsetof(epggrab_module_sd_t, lineup[0]),
+      .list      = sd_device_class_headend_list,
+      .group     = 2,
+    },
+    {
+      .type      = PT_INT,
+      .id        = "lineup2",
+      .name      = "Lineup 2",
+      .off       = offsetof(epggrab_module_sd_t, lineup[1]),
+      .list      = sd_device_class_headend_list,
+      .group     = 2,
+    },
+    {
+      .type      = PT_INT,
+      .id        = "lineup3",
+      .name      = "Lineup 3",
+      .off       = offsetof(epggrab_module_sd_t, lineup[2]),
+      .list      = sd_device_class_headend_list,
+      .group     = 2,
+    },
+    {
+      .type      = PT_INT,
+      .id        = "lineup4",
+      .name      = "Lineup 4",
+      .off       = offsetof(epggrab_module_sd_t, lineup[3]),
+      .list      = sd_device_class_headend_list,
+      .group     = 2,
+    },
+    {}
+  },
+};
 
 struct buffer
 {
@@ -109,11 +491,9 @@ static size_t program_callback(void *contents, size_t size, size_t nmemb, void *
 	return len;
 }
 
-static int get_token(CURL *curl, char *username, char *sha1_hex, char *token)
+static htsmsg_t *get_token(CURL *curl, const char *username, const char *sha1_hex)
 {
 	char *out;
-	const char *ptr;
-	int code = -1;
 	struct buffer buf = { 0, 0, NULL };
 	htsmsg_t *m;
 
@@ -138,20 +518,8 @@ static int get_token(CURL *curl, char *username, char *sha1_hex, char *token)
 
 	buf.ptr[buf.cur_size] = '\0';
 	m = htsmsg_json_deserialize(buf.ptr);
-	if (m)
-	{
-		if (!htsmsg_get_s32(m, "code", &code) && code == 0)
-		{
-			if ((ptr = htsmsg_get_str(m, "token")))
-				strcpy(token, ptr);
-		}
-		htsmsg_destroy(m);
-	}
-	else
-		printf("get_token error: %s\n", buf.ptr);
-
 	free(buf.ptr);
-	return code;
+	return m;
 }
 
 static htsmsg_t *add_lineup(CURL *curl, const char *uri)
@@ -159,13 +527,49 @@ static htsmsg_t *add_lineup(CURL *curl, const char *uri)
 	char url[160];
 	int code = -1;
 	struct buffer buf = { 0, 0, NULL };
-	htsmsg_t *m;
+	htsmsg_t *m = NULL;
 
 	snprintf(url, sizeof(url), "https://json.schedulesdirect.org%s", uri);
 
 	curl_easy_setopt(curl, CURLOPT_URL, url);
 	curl_easy_setopt(curl, CURLOPT_UPLOAD, 1L);
 	curl_easy_setopt(curl, CURLOPT_INFILESIZE, 0L);
+	curl_easy_setopt(curl, CURLOPT_WRITEFUNCTION, write_callback);
+	curl_easy_setopt(curl, CURLOPT_WRITEDATA, &buf);
+
+	curl_easy_perform(curl);
+
+	if (buf.cur_size > 0)
+	{
+		buf.ptr[buf.cur_size] = '\0';
+		m = htsmsg_json_deserialize(buf.ptr);
+		if (m)
+		{
+			if (htsmsg_get_s32(m, "code", &code) || code != 0)
+			{
+				printf("add_lineup code error: %s\n", buf.ptr);
+				htsmsg_destroy(m);
+				m = NULL;
+			}
+		}
+		else
+			printf("add_lineup m error: %s\n", buf.ptr);
+	}
+	free(buf.ptr);
+	return m;
+}
+
+static htsmsg_t *delete_lineup(CURL *curl, const char *uri)
+{
+	char url[160];
+	int code = -1;
+	struct buffer buf = { 0, 0, NULL };
+	htsmsg_t *m = NULL;
+
+	snprintf(url, sizeof(url), "https://json.schedulesdirect.org%s", uri);
+
+	curl_easy_setopt(curl, CURLOPT_URL, url);
+	curl_easy_setopt(curl, CURLOPT_CUSTOMREQUEST, "DELETE");
 	curl_easy_setopt(curl, CURLOPT_WRITEFUNCTION, write_callback);
 	curl_easy_setopt(curl, CURLOPT_WRITEDATA, &buf);
 
@@ -219,6 +623,29 @@ static htsmsg_t *get_status(CURL *curl)
 		}
 		else
 			printf("get_status m error: %s\n", buf.ptr);
+	}
+	free(buf.ptr);
+	return m;
+}
+
+static htsmsg_t *get_headends(CURL *curl, const char *country, const char *zipcode)
+{
+	char url[160];
+	struct buffer buf = { 0, 0, NULL };
+	htsmsg_t *m = NULL;
+
+	snprintf(url, sizeof(url), "https://json.schedulesdirect.org/20140530/headends?country=%s&postalcode=%s", country, zipcode);
+	curl_easy_setopt(curl, CURLOPT_URL, url);
+	curl_easy_setopt(curl, CURLOPT_HTTPGET, 1L);
+	curl_easy_setopt(curl, CURLOPT_WRITEFUNCTION, write_callback);
+	curl_easy_setopt(curl, CURLOPT_WRITEDATA, &buf);
+
+	curl_easy_perform(curl);
+
+	if (buf.cur_size > 0)
+	{
+		buf.ptr[buf.cur_size] = '\0';
+		m = htsmsg_json_deserialize(buf.ptr);
 	}
 	free(buf.ptr);
 	return m;
@@ -1020,24 +1447,45 @@ static void process_schedule(
 	}
 }
 
+htsmsg_t *sd_get_token(epggrab_module_sd_t *skel, CURL **curl, struct curl_slist **chunk)
+{
+	*curl = curl_easy_init();
+	*chunk = curl_slist_append(NULL, "Content-Type: application/json;charset=UTF-8");
+	htsmsg_t *m;
+
+	curl_easy_setopt(*curl, CURLOPT_HTTPHEADER, *chunk);
+	curl_easy_setopt(*curl, CURLOPT_ENCODING, "");
+	curl_easy_setopt(*curl, CURLOPT_USERAGENT, USERAGENT);
+
+	m = get_token(*curl, skel->username, skel->sha1_password);
+
+	return m;
+}
+
 static char *_sd_grab(void *mod)
 {
 	epggrab_module_sd_t *skel = (epggrab_module_sd_t *)mod;
+	static char token[33];
+        char *ret = NULL;
+	const char *ptr;
 	CURL *curl;
-	struct curl_slist *chunk = NULL;
-	char token[33];
-	char *ret;
+	struct curl_slist *chunk;
+	int code = -1;
+	htsmsg_t *m;
 
-	curl = curl_easy_init();
-	chunk = curl_slist_append(chunk, "Content-Type: application/json;charset=UTF-8");
-	curl_easy_setopt(curl, CURLOPT_HTTPHEADER, chunk);
-	curl_easy_setopt(curl, CURLOPT_ENCODING, "");
-	curl_easy_setopt(curl, CURLOPT_USERAGENT, "benjamin.fennema@gmail.com (tvheadend)");
-
-	if (get_token(curl, skel->username, skel->sha1_password, token) != 0)
-		ret = NULL;
-	else
-		ret = token;
+	m = sd_get_token(skel, &curl, &chunk);
+	if (m)
+	{
+		if (!htsmsg_get_s32(m, "code", &code) && code == 0)
+		{
+			if ((ptr = htsmsg_get_str(m, "token")))
+			{
+				strcpy(token, ptr);
+				ret = token;
+			}
+		}
+		htsmsg_destroy(m);
+	}
 
 	curl_slist_free_all(chunk);
 	curl_easy_cleanup(curl);
@@ -1144,7 +1592,7 @@ static htsmsg_t *_sd_trans(void *mod, char *data)
 	chunk = curl_slist_append(chunk, "Content-Type: application/json;charset=UTF-8");
 	curl_easy_setopt(curl, CURLOPT_HTTPHEADER, chunk);
 	curl_easy_setopt(curl, CURLOPT_ENCODING, "");
-	curl_easy_setopt(curl, CURLOPT_USERAGENT, "benjamin.fennema@gmail.com (tvheadend)");
+	curl_easy_setopt(curl, CURLOPT_USERAGENT, USERAGENT);
 
 	snprintf(token_header, sizeof(token_header), "Token: %s", data);
 	chunk = curl_slist_append(chunk, token_header);
@@ -1321,7 +1769,7 @@ void sd_init(void)
 {
 	epggrab_module_sd_t *skel = calloc(1, sizeof(epggrab_module_sd_t));
 	htsmsg_t *m;
-	const char *username, *password;
+	const char *uuid = NULL;
 
 	curl_global_init(CURL_GLOBAL_DEFAULT);
 
@@ -1329,18 +1777,17 @@ void sd_init(void)
 
 	if (m)
 	{
-		username = htsmsg_get_str(m, "username");
-		password = htsmsg_get_str(m, "password");
+		skel->username = strdup(htsmsg_get_str(m, "username") ?: "");
+		skel->sha1_password = strdup(htsmsg_get_str(m, "password") ?: "");
+		uuid = htsmsg_get_str(m, "uuid");
 		skel->flush = htsmsg_get_bool_or_default(m, "flush", 0);
 		skel->update = htsmsg_get_u32_or_default(m, "update", dispatch_clock);
-
-		if (username)
-			strcpy(skel->username, username);
-		if (password)
-			strcpy(skel->sha1_password, password);
-
-		htsmsg_destroy(m);
 	}
+
+	idnode_insert((idnode_t *)skel, uuid, &epggrab_sd_device_class, 0);
+
+	if (m)
+		htsmsg_destroy(m);
 
 	epggrab_module_int_create(&skel->mod, "sd", "Schedules Direct", 4, "sd",
 			_sd_grab, _sd_parse, _sd_trans, &_sd_channels);

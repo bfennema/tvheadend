@@ -378,6 +378,7 @@ function accessUpdate(o) {
         tvheadend.cteditor(chepg);
         tvheadend.bouquet(chepg);
         tvheadend.epggrab(chepg);
+        tvheadend.epggrabnew(chepg);
 
         cp.add(chepg);
 

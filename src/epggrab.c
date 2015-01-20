@@ -164,7 +164,7 @@ static void _epggrab_load ( void )
         }
       }
       if ( (a = htsmsg_get_map(m, "mod_enabled")) ) {
-        LIST_FOREACH(mod, &epggrab_modules, link) {
+        LIST_FOREACH(mod, &epggrab_modules, em_link) {
           if (htsmsg_get_u32_or_default(a, mod->id, 0)) {
             epggrab_enable_module(mod, 1);
           }
@@ -172,7 +172,7 @@ static void _epggrab_load ( void )
       }
       if ( (a = htsmsg_get_list(m, "mod_priority")) ) {
         int prio = 1;
-        LIST_FOREACH(mod, &epggrab_modules, link)
+        LIST_FOREACH(mod, &epggrab_modules, em_link)
           mod->priority = 0;
         HTSMSG_FOREACH(f, a) {
           mod = epggrab_module_find_by_id(f->hmf_str);
@@ -191,7 +191,7 @@ static void _epggrab_load ( void )
     free(epggrab_cron);
     epggrab_cron       = strdup("# Default config (00:04 and 12:04 everyday)\n4 */12 * * *");
     epggrab_module     = NULL;              // disabled
-    LIST_FOREACH(mod, &epggrab_modules, link) // enable all OTA by default
+    LIST_FOREACH(mod, &epggrab_modules, em_link) // enable all OTA by default
       if (mod->type == EPGGRAB_OTA)
         epggrab_enable_module(mod, 1);
   }
@@ -228,7 +228,7 @@ void epggrab_save ( void )
   if ( epggrab_module )
     htsmsg_add_str(m, "module", epggrab_module->id);
   a = NULL;
-  LIST_FOREACH(mod, &epggrab_modules, link) {
+  LIST_FOREACH(mod, &epggrab_modules, em_link) {
     if (mod->enabled) {
       if (!a) a = htsmsg_create_map();
       htsmsg_add_u32(a, mod->id, 1);
@@ -406,7 +406,7 @@ void epggrab_done ( void )
 
   pthread_mutex_lock(&global_lock);
   while ((mod = LIST_FIRST(&epggrab_modules)) != NULL) {
-    LIST_REMOVE(mod, link);
+    LIST_REMOVE(mod, em_link);
     if (mod->done)
       mod->done(mod);
     free((void *)mod->id);

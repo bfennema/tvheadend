@@ -44,7 +44,7 @@
 epggrab_module_t* epggrab_module_find_by_id ( const char *id )
 {
   epggrab_module_t *m;
-  LIST_FOREACH(m, &epggrab_modules, link) {
+  LIST_FOREACH(m, &epggrab_modules, em_link) {
     if ( !strcmp(m->id, id) ) return m;
   }
   return NULL;
@@ -54,7 +54,7 @@ htsmsg_t *epggrab_module_list ( void )
 {
   epggrab_module_t *m;
   htsmsg_t *e, *a = htsmsg_create_list();
-  LIST_FOREACH(m, &epggrab_modules, link) {
+  LIST_FOREACH(m, &epggrab_modules, em_link) {
     e = htsmsg_create_map();
     htsmsg_add_str(e, "id", m->id);
     if (m->type == EPGGRAB_INT)
@@ -99,7 +99,7 @@ epggrab_module_t *epggrab_module_create
 
   /* Insert */
   assert(!epggrab_module_find_by_id(id));
-  LIST_INSERT_HEAD(&epggrab_modules, skel, link);
+  LIST_INSERT_HEAD(&epggrab_modules, skel, em_link);
   tvhlog(LOG_INFO, "epggrab", "module %s created", id);
 
   return skel;

@@ -248,7 +248,7 @@ epggrab_ota_start ( epggrab_ota_mux_t *om, mpegts_mux_t *mm )
   gtimer_arm(&om->om_data_timer, epggrab_ota_data_timeout_cb, om,
              30 + grace); /* 30 seconds to receive any EPG info */
   if (modname) {
-    LIST_FOREACH(m, &epggrab_modules, link)
+    LIST_FOREACH(m, &epggrab_modules, em_link)
       if (!strcmp(m->id, modname)) {
         epggrab_ota_register((epggrab_module_ota_t *)m, om, mm);
         break;
@@ -285,7 +285,7 @@ epggrab_mux_start ( mpegts_mux_t *mm, void *p )
 
   /* Register all modules */
   ota = NULL;
-  LIST_FOREACH(m, &epggrab_modules, link) {
+  LIST_FOREACH(m, &epggrab_modules, em_link) {
     if (m->type == EPGGRAB_OTA && m->enabled)
       ota = epggrab_ota_register((epggrab_module_ota_t *)m, ota, mm);
   }

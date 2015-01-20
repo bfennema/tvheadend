@@ -138,7 +138,8 @@ int epggrab_channel_is_ota ( epggrab_channel_t *ec );
  */
 struct epggrab_module
 {
-  LIST_ENTRY(epggrab_module)   link;      ///< Global list link
+  idnode_t                     em_id;
+  LIST_ENTRY(epggrab_module)   em_link;   ///< Global list link
 
   enum {
     EPGGRAB_OTA,

@@ -116,7 +116,7 @@ sd_device_class_save ( idnode_t *in )
 						htsmsg_add_str(m4, "modified", strdup(htsmsg_get_str(m3, "modified")));
 						htsmsg_add_msg(skel->lineups, strdup(htsmsg_get_str(m3, "uri")), m4);
 					}
-	
+
 				}
 			}
 			htsmsg_destroy(m2);
@@ -223,7 +223,7 @@ sd_device_class_save ( idnode_t *in )
 
 	curl_slist_free_all(chunk);
 	curl_easy_cleanup(curl);
-	
+
 }
 
 static const char *
@@ -237,7 +237,7 @@ sd_device_class_password_set( void *obj, const void *p )
 {
   epggrab_module_sd_t *skel = obj;
   unsigned char hash[SHA_DIGEST_LENGTH];
-  char sha1_password[SHA_DIGEST_LENGTH*2+1]; 
+  char sha1_password[SHA_DIGEST_LENGTH*2+1];
   int i;
 
   if (skel->sha1_password && strlen(skel->sha1_password) == SHA_DIGEST_LENGTH*2 && strncmp(skel->sha1_password, p, SHA_DIGEST_LENGTH*2) == 0)
@@ -496,6 +496,7 @@ static htsmsg_t *get_token(CURL *curl, const char *username, const char *sha1_he
 	char *out;
 	struct buffer buf = { 0, 0, NULL };
 	htsmsg_t *m;
+	CURLcode ret;
 
 	m = htsmsg_create_map();
 	htsmsg_add_str(m, "username", username);
@@ -512,14 +513,23 @@ static htsmsg_t *get_token(CURL *curl, const char *username, const char *sha1_he
 	curl_easy_setopt(curl, CURLOPT_WRITEFUNCTION, write_callback);
 	curl_easy_setopt(curl, CURLOPT_WRITEDATA, &buf);
 
-	curl_easy_perform(curl);
+	ret = curl_easy_perform(curl);
 
 	free(out);
 
-	buf.ptr[buf.cur_size] = '\0';
-	m = htsmsg_json_deserialize(buf.ptr);
-	free(buf.ptr);
-	return m;
+	if (ret == CURLE_OK)
+	{
+		buf.ptr[buf.cur_size] = '\0';
+		m = htsmsg_json_deserialize(buf.ptr);
+		free(buf.ptr);
+		return m;
+	}
+	else
+	{
+		if (buf.ptr)
+			free(buf.ptr);
+		return NULL;
+	}
 }
 
 static htsmsg_t *add_lineup(CURL *curl, const char *uri)
@@ -651,7 +661,7 @@ static htsmsg_t *get_headends(CURL *curl, const char *country, const char *zipco
 	return m;
 }
 
-static htsmsg_t *get_lineups(CURL *curl)
+static htsmsg_t __attribute__((unused)) *get_lineups(CURL *curl)
 {
 	int code = -1;
 	struct buffer buf = { 0, 0, NULL };
@@ -1448,15 +1458,17 @@ static void process_schedule(
 
 htsmsg_t *sd_get_token(epggrab_module_sd_t *skel, CURL **curl, struct curl_slist **chunk)
 {
+	htsmsg_t *m = NULL;
+
 	*curl = curl_easy_init();
 	*chunk = curl_slist_append(NULL, "Content-Type: application/json;charset=UTF-8");
-	htsmsg_t *m;
 
 	curl_easy_setopt(*curl, CURLOPT_HTTPHEADER, *chunk);
 	curl_easy_setopt(*curl, CURLOPT_ENCODING, "");
 	curl_easy_setopt(*curl, CURLOPT_USERAGENT, USERAGENT);
 
-	m = get_token(*curl, skel->username, skel->sha1_password);
+	if (skel->username && skel->sha1_password)
+		m = get_token(*curl, skel->username, skel->sha1_password);
 
 	return m;
 }
@@ -1584,6 +1596,8 @@ static htsmsg_t *_sd_trans(void *mod, char *data)
 	int save = 0;
 	int cnt = 0;
 	int i;
+	htsmsg_t *logo;
+	const char *url = NULL, __attribute__((unused)) *md5;
 
 	if (data == NULL)
 		return NULL;
@@ -1607,17 +1621,6 @@ static htsmsg_t *_sd_trans(void *mod, char *data)
 	}
 
 	v = htsmsg_get_list(m, "lineups");
-	if (!TAILQ_FIRST(&v->hm_fields))
-	{
-		htsmsg_destroy(m);
-
-		add_lineup(curl, "/20140530/lineups/USA-OTA-94024");
-
-		m = get_lineups(curl);
-
-		v = htsmsg_get_list(m, "lineups");
-	}
-
 	l = htsmsg_create_list();
 
 	HTSMSG_FOREACH(f, v)
@@ -1670,13 +1673,27 @@ static htsmsg_t *_sd_trans(void *mod, char *data)
 				htsmsg_get_u32(c2, "uhfVhf", &freq);
 				htsmsg_get_u32(c2, "atscMajor", &major);
 				htsmsg_get_u32(c2, "atscMinor", &minor);
+				logo = htsmsg_get_map(c3, "logo");
+				if (logo)
+				{
+					url = htsmsg_get_str(logo, "URL");
+					md5 = htsmsg_get_str(logo, "md5");
+//					printf("%d-%d %s (%d) (%s)\n",
+//						major, minor, htsmsg_get_str(c3, "callsign"),
+//						freq, url);
+				}
+				else
+					url = NULL;
 
 				ch = epggrab_channel_find(skel->mod.channels,
 					sid, 1, &save,
 					(epggrab_module_t *)&skel->mod);
 				sprintf(name, "%d-%d %s (%d)",
 					major, minor, htsmsg_get_str(c3, "callsign"), freq);
+                                save |= epggrab_channel_set_number(ch, major, minor);
 				save |= epggrab_channel_set_name(ch, name);
+                                if (url)
+                                    save |= epggrab_channel_set_icon(ch, url);
 				if (save)
 					epggrab_channel_updated(ch);
 

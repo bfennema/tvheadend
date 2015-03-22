@@ -379,6 +379,9 @@ tvhdhomerun_frontend_monitor_cb( void *aux )
       pthread_mutex_lock(&hfe->mi_output_lock);
       RB_FOREACH(mp, &mm->mm_pids, mp_link)
       {
+        /* Skip internal PIDs */
+        if (mp->mp_pid > MPEGTS_FULLMUX_PID)
+          continue;
         tvhdebug("tvhdhomerun", "adding PID 0x%x to pfilter", mp->mp_pid);
         if (!tvhdhomerun_tuner_filter_pid_is_set(hfe, mp->mp_pid))
           tvhdhomerun_tuner_filter_pid_set(hfe, mp->mp_pid);

@@ -739,7 +739,7 @@ static htsmsg_t *get_schedules(CURL *curl, htsmsg_t *l)
 	return m;
 }
 
-static htsmsg_t *get_episodes(CURL *curl, htsmsg_t *map, htsmsg_t *l)
+static htsmsg_t *get_episodes(CURL *curl, htsmsg_t *l)
 {
 	char *out;
 	struct buffer buf = { 0, 0, NULL };
@@ -1554,7 +1554,7 @@ static htsmsg_t *_sd_trans(void *mod, char *data)
 	struct curl_slist *chunk = NULL;
 	char token_header[40];
 	const char *uri, *sid, *program_id;
-	htsmsg_t *m, *v, *c, *m2, *v2, *c2, *c3, *m3, *s, *l, *n, *t, *msg, *ret, *m5;
+	htsmsg_t *m, *v, *c, *m2, *v2, *c2, *c3, *m3, *s, *l, *n, *t, *msg, *ret, *m5, *eps;
 	htsmsg_field_t *f, *f2;
 	uint32_t major, minor, freq;
 	epggrab_channel_t *ch;
@@ -1730,7 +1730,13 @@ static htsmsg_t *_sd_trans(void *mod, char *data)
 		{
 			if (i >= 5000)
 			{
-				get_episodes(curl, msg, t);
+				eps = get_episodes(curl, t);
+				HTSMSG_FOREACH(f2, eps)
+				{
+					m = htsmsg_detach_submsg(f2);
+					program_id = htsmsg_get_str(m, "programID");
+					htsmsg_add_msg(msg, program_id, m);
+				}
 				t = htsmsg_create_list();
 				i = 0;
 			}
@@ -1738,7 +1744,13 @@ static htsmsg_t *_sd_trans(void *mod, char *data)
 			program_id = htsmsg_field_get_str(f);
 			htsmsg_add_str(t, 0, program_id);
 		}
-		get_episodes(curl, msg, t);
+		eps = get_episodes(curl, t);
+		HTSMSG_FOREACH(f2, eps)
+		{
+			m = htsmsg_detach_submsg(f2);
+			program_id = htsmsg_get_str(m, "programID");
+			htsmsg_add_msg(msg, program_id, m);
+		}
 		htsmsg_add_msg(ret, "episodes", msg);
 	}
 	else

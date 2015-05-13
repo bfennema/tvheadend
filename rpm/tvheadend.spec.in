@@ -18,6 +18,7 @@ BuildRequires:  dbus-devel
 BuildRequires:  avahi-libs
 BuildRequires:  openssl-devel
 BuildRequires:  git wget
+BuildRequires:  java-headless
 
 Requires:       systemd-units >= 1
 
@@ -76,6 +77,9 @@ exit 0
 %{_unitdir}/*
 
 %changelog
+* Wed May 13 2015 Jaroslav Kysela <perex@perex.cz> v3.9-2842
+- Add java-headless to BuildRequires
+
 * Wed Mar 25 2015 Bob Lightfoot <boblfoot@gmail.com> 3.9-2658-gb427d7e
 - Patching rpm spec file so the arm architecture builds properly
 

@@ -130,7 +130,7 @@ sd_device_class_save ( idnode_t *in )
 						m3 = htsmsg_get_map_by_field(f);
 						m4 = htsmsg_create_map();
 						htsmsg_add_u32(m4, "index", ++lineup_cnt);
-						htsmsg_add_str(m4, "id", strdup(htsmsg_get_str(m3, "ID")));
+						htsmsg_add_str(m4, "id", strdup(htsmsg_get_str(m3, "lineup")));
 						htsmsg_add_str(m4, "modified", strdup(htsmsg_get_str(m3, "modified")));
 						htsmsg_add_msg(skel->lineups, strdup(htsmsg_get_str(m3, "uri")), m4);
 					}

@@ -155,7 +155,7 @@ sd_device_class_save ( idnode_t *in )
 							m4 = htsmsg_get_map_by_field(f2);
 							name = htsmsg_get_str(m4, "name");
 							uri = htsmsg_get_str(m4, "uri");
-							id = uri + strlen("/20140530/lineups/");
+							id = uri + strlen("/20141201/lineups/");
 							if (!skel->lineups)
 								skel->lineups = htsmsg_create_map();
 							if ((m5 = htsmsg_get_map(skel->lineups, uri)) == NULL)
@@ -452,63 +452,6 @@ static size_t write_callback(void *contents, size_t size, size_t nmemb, void *us
 	return (size * nmemb);
 }
 
-struct program_buffer
-{
-	int cur_size;
-	int max_size;
-	char *ptr;
-	htsmsg_t *m;
-	const char *id;
-};
-
-static size_t program_callback(void *contents, size_t size, size_t nmemb, void *userp)
-{
-	htsmsg_t *m;
-	const char *id;
-	int i, len = size * nmemb;
-	struct program_buffer *buf = (struct program_buffer *)userp;
-
-	int offset = buf->cur_size;
-
-	if (buf->cur_size + len > buf->max_size)
-	{
-		buf->max_size += (buf->cur_size + len + 4095) & ~4095;
-		buf->ptr = realloc(buf->ptr, buf->max_size);
-	}
-
-	for (i=0; i<len; i++)
-	{
-		if (((char *)contents)[i] == '\n' || ((char *)contents)[i] == '\r')
-		{
-			if (offset > 0)
-			{
-				buf->ptr[offset] = '\0';
-				m = htsmsg_json_deserialize(buf->ptr);
-				if (m)
-				{
-					id = htsmsg_get_str(m, buf->id);
-					if (id)
-						htsmsg_add_msg(buf->m, id, m);
-					else
-						printf("program_callback id error: %s\n", buf->ptr);
-				}
-				else
-					printf("program_callback m error: %s\n", buf->ptr);
-			}
-
-			offset = 0;
-		}
-		else
-		{
-			buf->ptr[offset] = ((char *)contents)[i];
-			offset ++;
-		}
-	}
-	buf->cur_size = offset;
-
-	return len;
-}
-
 static htsmsg_t *get_token(CURL *curl, const char *username, const char *sha1_hex)
 {
 	char *out;
@@ -522,7 +465,7 @@ static htsmsg_t *get_token(CURL *curl, const char *username, const char *sha1_he
 	out = htsmsg_json_serialize_to_str(m, 0);
 	htsmsg_destroy(m);
 
-	curl_easy_setopt(curl, CURLOPT_URL, "https://json.schedulesdirect.org/20140530/token");
+	curl_easy_setopt(curl, CURLOPT_URL, "https://json.schedulesdirect.org/20141201/token");
 	curl_easy_setopt(curl, CURLOPT_POST, 1L);
 	curl_easy_setopt(curl, CURLOPT_POSTFIELDS, out);
 #if 0
@@ -629,7 +572,7 @@ static htsmsg_t *get_status(CURL *curl)
 	struct buffer buf = { 0, 0, NULL };
 	htsmsg_t *m = NULL;
 
-	curl_easy_setopt(curl, CURLOPT_URL, "https://json.schedulesdirect.org/20140530/status");
+	curl_easy_setopt(curl, CURLOPT_URL, "https://json.schedulesdirect.org/20141201/status");
 	curl_easy_setopt(curl, CURLOPT_HTTPGET, 1L);
 	curl_easy_setopt(curl, CURLOPT_WRITEFUNCTION, write_callback);
 	curl_easy_setopt(curl, CURLOPT_WRITEDATA, &buf);
@@ -662,7 +605,7 @@ static htsmsg_t *get_headends(CURL *curl, const char *country, const char *zipco
 	struct buffer buf = { 0, 0, NULL };
 	htsmsg_t *m = NULL;
 
-	snprintf(url, sizeof(url), "https://json.schedulesdirect.org/20140530/headends?country=%s&postalcode=%s", country, zipcode);
+	snprintf(url, sizeof(url), "https://json.schedulesdirect.org/20141201/headends?country=%s&postalcode=%s", country, zipcode);
 	curl_easy_setopt(curl, CURLOPT_URL, url);
 	curl_easy_setopt(curl, CURLOPT_HTTPGET, 1L);
 	curl_easy_setopt(curl, CURLOPT_WRITEFUNCTION, write_callback);
@@ -685,7 +628,7 @@ static htsmsg_t __attribute__((unused)) *get_lineups(CURL *curl)
 	struct buffer buf = { 0, 0, NULL };
 	htsmsg_t *m = NULL;
 
-	curl_easy_setopt(curl, CURLOPT_URL, "https://json.schedulesdirect.org/20140530/lineups");
+	curl_easy_setopt(curl, CURLOPT_URL, "https://json.schedulesdirect.org/20141201/lineups");
 	curl_easy_setopt(curl, CURLOPT_HTTPGET, 1L);
 	curl_easy_setopt(curl, CURLOPT_WRITEFUNCTION, write_callback);
 	curl_easy_setopt(curl, CURLOPT_WRITEDATA, &buf);
@@ -747,7 +690,7 @@ static htsmsg_t *get_schedules_md5(CURL *curl, htsmsg_t *l)
 	out = htsmsg_json_serialize_to_str(l, 0);
 	htsmsg_destroy(l);
 
-	curl_easy_setopt(curl, CURLOPT_URL, "https://json.schedulesdirect.org/20140530/schedules/md5");
+	curl_easy_setopt(curl, CURLOPT_URL, "https://json.schedulesdirect.org/20141201/schedules/md5");
 	curl_easy_setopt(curl, CURLOPT_POST, 1L);
 	curl_easy_setopt(curl, CURLOPT_POSTFIELDS, out);
 	curl_easy_setopt(curl, CURLOPT_WRITEFUNCTION, write_callback);
@@ -769,82 +712,61 @@ static htsmsg_t *get_schedules_md5(CURL *curl, htsmsg_t *l)
 static htsmsg_t *get_schedules(CURL *curl, htsmsg_t *l)
 {
 	char *out;
-	struct program_buffer buf = { 0, 0, NULL, htsmsg_create_map(), "stationID" };
+	struct buffer buf = { 0, 0, NULL };
 	htsmsg_t *m;
-	const char *id;
 
 	out = htsmsg_json_serialize_to_str(l, 0);
 	htsmsg_destroy(l);
 
-	curl_easy_setopt(curl, CURLOPT_URL, "https://json.schedulesdirect.org/20140530/schedules");
+	curl_easy_setopt(curl, CURLOPT_URL, "https://json.schedulesdirect.org/20141201/schedules");
 	curl_easy_setopt(curl, CURLOPT_POST, 1L);
 	curl_easy_setopt(curl, CURLOPT_POSTFIELDS, out);
-	curl_easy_setopt(curl, CURLOPT_WRITEFUNCTION, program_callback);
+	curl_easy_setopt(curl, CURLOPT_WRITEFUNCTION, write_callback);
 	curl_easy_setopt(curl, CURLOPT_WRITEDATA, &buf);
 
 	curl_easy_perform(curl);
 
 	free(out);
 
-	if (buf.cur_size > 0)
+	buf.ptr[buf.cur_size] = '\0';
+	m = htsmsg_json_deserialize(buf.ptr);
+	if (m == NULL)
 	{
-		buf.ptr[buf.cur_size] = '\0';
-		m = htsmsg_json_deserialize(buf.ptr);
-		if (m)
-		{
-			id = htsmsg_get_str(m, buf.id);
-			if (id)
-				htsmsg_add_msg(buf.m, id, m);
-			else
-				printf("get_schedules id error: %s\n", buf.ptr);
-		}
-		else
-			printf("get_schedules m error: %s\n", buf.ptr);
-
+		printf("get_schedules() error: len=%d, ptr=%s\n", buf.cur_size, buf.ptr);
 	}
 	free(buf.ptr);
 
-	return buf.m;
+	return m;
 }
 
 static htsmsg_t *get_episodes(CURL *curl, htsmsg_t *map, htsmsg_t *l)
 {
 	char *out;
-	struct program_buffer buf = { 0, 0, NULL, map, "programID" };
+	struct buffer buf = { 0, 0, NULL };
 	htsmsg_t *m;
-	const  char *id;
 
 	out = htsmsg_json_serialize_to_str(l, 0);
 	htsmsg_destroy(l);
 
-	curl_easy_setopt(curl, CURLOPT_URL, "https://json.schedulesdirect.org/20140530/programs");
+	curl_easy_setopt(curl, CURLOPT_URL, "https://json.schedulesdirect.org/20141201/programs");
 	curl_easy_setopt(curl, CURLOPT_POST, 1L);
 	curl_easy_setopt(curl, CURLOPT_POSTFIELDS, out);
-	curl_easy_setopt(curl, CURLOPT_WRITEFUNCTION, program_callback);
+	curl_easy_setopt(curl, CURLOPT_WRITEFUNCTION, write_callback);
 	curl_easy_setopt(curl, CURLOPT_WRITEDATA, &buf);
 
 	curl_easy_perform(curl);
 
 	free(out);
 
-	if (buf.cur_size > 0)
+	buf.ptr[buf.cur_size] = '\0';
+	m = htsmsg_json_deserialize(buf.ptr);
+	if (m == NULL)
 	{
-		buf.ptr[buf.cur_size] = '\0';
-		m = htsmsg_json_deserialize(buf.ptr);
-		if (m)
-		{
-			id = htsmsg_get_str(m, buf.id);
-			if (id)
-				htsmsg_add_msg(buf.m, id, m);
-			else
-				printf("get_episodes id error: %s\n", buf.ptr);
-		}
-		else
-			printf("get_episodes m error: %s\n", buf.ptr);
+		printf("get_episodes) error: len=%d, ptr=%s\n", buf.cur_size, buf.ptr);
 	}
 	free(buf.ptr);
 
-	return buf.m;
+	return m;
 }
 
 static time_t _sp_str2time(const char *in)
@@ -1392,35 +1314,56 @@ static void process_schedule_md5(
 	void *mod,
 	htsmsg_field_t *f,
 	htsmsg_t *l,
+	htsmsg_t *m5,
 	int *cnt)
 {
 	epggrab_module_sd_t *skel = (epggrab_module_sd_t *)mod;
-	htsmsg_t *m, *m2, *m3;
+	htsmsg_t *m, *m2, *m3, *l2, *m4;
 	htsmsg_field_t *f2;
-	const char *station_id, *md5;
+	const char *station_id, *md5, *ch_md5;
 	int save = 0;
+	int day_cnt = 0;
 	epggrab_channel_t *ch;
 
 	station_id = f->hmf_name;
-	m = htsmsg_get_list_by_field(f);
+	m = htsmsg_get_map_by_field(f);
 	ch = epggrab_channel_find(skel->mod.channels,
 		station_id, 0, &save,
 		(epggrab_module_t *)&skel->mod);
 
+	m4 = htsmsg_create_map();
+	l2 = htsmsg_create_list();
+
 	HTSMSG_FOREACH(f2, m)
 	{
-		m2 = htsmsg_get_map_by_field(f2);
-		md5 = htsmsg_get_str(m2, "md5");
-
-		if (!skel->flush && ch->md5 && strcmp(ch->md5, md5) == 0)
-			return;
+		if (skel->flush || !ch->md5) {
+			htsmsg_add_str(l2, NULL, f2->hmf_name);
+			day_cnt ++;
+		}
+		else
+		{
+			m2 = htsmsg_get_map_by_field(f2);
+			md5 = htsmsg_get_str(m2, "md5");
+			ch_md5 = htsmsg_get_str(ch->md5, f2->hmf_name);
+			if (!ch_md5 || strcmp(ch_md5, md5) != 0) {
+				htsmsg_add_str(l2, NULL, f2->hmf_name);
+				day_cnt ++;
+			}
+			htsmsg_add_str(m4, f2->hmf_name, md5);
+		}
 	}
+	htsmsg_add_msg(m5, station_id, m4);
 
-	m3 = htsmsg_create_map();
-	htsmsg_add_str(m3, "stationID", station_id);
-	htsmsg_add_u32(m3, "days", 13);
-	htsmsg_add_msg(l, NULL, m3);
-	(*cnt) ++;
+	if (day_cnt > 0)
+	{
+		m3 = htsmsg_create_map();
+		htsmsg_add_str(m3, "stationID", station_id);
+		htsmsg_add_msg(m3, "date", l2);
+		htsmsg_add_msg(l, NULL, m3);
+		(*cnt) += day_cnt;
+	}
+	else
+		htsmsg_destroy(l2);
 }
 
 static void process_schedule(
@@ -1529,16 +1472,18 @@ static int _sd_parse(
 	epggrab_stats_t *stats)
 {
 	epggrab_module_sd_t *skel = (epggrab_module_sd_t *)mod;
-	htsmsg_t *schedules, *episodes, *episode, *m, *programs, *program, *metadata;
+	htsmsg_t *schedules, *episodes, *episode, *m, *programs, *program, *metadata, *md5s, *station_md5s;
 	htsmsg_field_t *f, *f2;
-	const char *station_id, *program_id, *md5;
+	const char *station_id, *program_id;
 	epggrab_channel_t *ch;
 	epggrab_channel_link_t *ecl;
 	int save = 0, save2 = 0;
 	int code = -1;
+	const char *md5, *start_date;
 
-	schedules = htsmsg_get_map(data, "schedules");
+	schedules = htsmsg_get_list(data, "schedules");
 	episodes = htsmsg_get_map(data, "episodes");
+	md5s = htsmsg_get_map(data, "md5s");
 
 	if (schedules)
 	{
@@ -1552,12 +1497,15 @@ static int _sd_parse(
 				programs = htsmsg_get_list(m, "programs");
 				metadata = htsmsg_get_map(m, "metadata");
 				md5 = htsmsg_get_str(metadata, "md5");
+				station_md5s = htsmsg_get_map(md5s, station_id);
+				start_date = htsmsg_get_str(metadata, "startDate");
+				htsmsg_set_str(station_md5s, start_date, md5);
 
 				ch = epggrab_channel_find(skel->mod.channels,
 					station_id, 0, &save,
 					(epggrab_module_t *)&skel->mod);
 				stats->channels.total ++;
-				save |= epggrab_channel_set_md5(ch, md5);
+				save |= epggrab_channel_set_md5(ch, station_md5s);
 				if (save)
 				{
 					epggrab_channel_updated(ch);
@@ -1606,7 +1554,7 @@ static htsmsg_t *_sd_trans(void *mod, char *data)
 	struct curl_slist *chunk = NULL;
 	char token_header[40];
 	const char *uri, *sid, *program_id;
-	htsmsg_t *m, *v, *c, *m2, *v2, *c2, *c3, *m3, *s, *l, *n, *t, *msg, *ret;
+	htsmsg_t *m, *v, *c, *m2, *v2, *c2, *c3, *m3, *s, *l, *n, *t, *msg, *ret, *m5;
 	htsmsg_field_t *f, *f2;
 	uint32_t major, minor, freq;
 	epggrab_channel_t *ch;
@@ -1719,7 +1667,6 @@ static htsmsg_t *_sd_trans(void *mod, char *data)
 				{
 					n = htsmsg_create_map();
 					htsmsg_add_str(n, "stationID", sid);
-					htsmsg_add_u32(n, "days", 13);
 					htsmsg_add_msg(l, NULL, n);
 					cnt ++;
 				}
@@ -1740,17 +1687,20 @@ static htsmsg_t *_sd_trans(void *mod, char *data)
 
 		cnt = 0;
 		l = htsmsg_create_list();
+		m5 = htsmsg_create_map();
 
 		HTSMSG_FOREACH(f, msg)
 		{
-			process_schedule_md5(mod, f, l, &cnt);
+			process_schedule_md5(mod, f, l, m5, &cnt);
 		}
 		htsmsg_destroy(msg);
+
+		htsmsg_add_msg(ret, "md5s", m5);
 	}
 
 	if (cnt > 0)
 	{
-		tvhlog(LOG_INFO, "sd", "Downloading %d schedules\n", cnt);
+		tvhlog(LOG_INFO, "sd", "Downloading %d days\n", cnt);
 		msg = get_schedules(curl, l);
 		cnt = 0;
 

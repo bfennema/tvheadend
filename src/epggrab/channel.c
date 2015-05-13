@@ -167,15 +167,13 @@ int epggrab_channel_set_number ( epggrab_channel_t *ec, int major, int minor )
 }
 
 /* Set channel md5 */
-int epggrab_channel_set_md5 ( epggrab_channel_t *ec, const char *md5 )
+int epggrab_channel_set_md5 ( epggrab_channel_t *ec, htsmsg_t *md5 )
 {
   int save = 0;
   if (!ec || !md5) return 0;
-  if (!ec->md5 || strcmp(ec->md5, md5) ) {
-    if (ec->md5) free(ec->md5);
-    ec->md5 = strdup(md5);
-    save = 1;
-  }
+  if (ec->md5) htsmsg_destroy(ec->md5);
+  ec->md5 = htsmsg_copy(md5);
+  save = 1;
   return save;
 }
 

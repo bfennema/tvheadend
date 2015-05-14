@@ -41,6 +41,9 @@ endif
 ifeq ($(CONFIG_LIBICONV),yes)
 LDFLAGS += -liconv
 endif
+ifeq ($(CONFIG_LIBCURL),yes)
+LDFLAGS += -lcurl
+endif
 ifeq ($(PLATFORM), darwin)
 LDFLAGS += -framework CoreServices
 else

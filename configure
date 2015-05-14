@@ -209,6 +209,14 @@ int test(void)
 }
 ' -liconv
 
+check_cc_snippet libcurl '
+#include <curl/curl.h>
+int test(void)
+{
+  CURL *curl = curl_easy_init();
+}
+' -lcurl
+
 if enabled_or_auto dvben50221; then
   check_cc_snippet libdvben50221 '
   #include <libdvben50221/en50221_session.h>
@@ -461,8 +469,6 @@ if enabled cwc || enabled capmt || enabled constcw; then
     LDFLAGS="$LDFLAGS -ldvbcsa"
   fi
 fi
-
-LDFLAGS="$LDFLAGS -lcurl"
 
 #
 # libdvben50221

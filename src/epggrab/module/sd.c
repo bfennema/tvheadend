@@ -57,6 +57,7 @@ typedef struct epggrab_module_sd
 	int server_lineup[4];
 	int lineup[4];
 	htsmsg_t *lineups;
+	char *custom_lineup;
 } epggrab_module_sd_t;
 
 htsmsg_t *sd_get_token(epggrab_module_sd_t *skel, CURL **curl, struct curl_slist **chunk);
@@ -118,6 +119,8 @@ sd_device_class_save ( idnode_t *in )
 			{
 				if (skel->lineups)
 				{
+					HTSMSG_FOREACH(f, skel->lineups)
+						lineup_cnt ++;
 				}
 				else
 				{
@@ -138,6 +141,41 @@ sd_device_class_save ( idnode_t *in )
 				}
 			}
 			htsmsg_destroy(m2);
+
+			if (skel->custom_lineup)
+			{
+				printf("Add Custom:\n");
+				m3 = add_lineup(curl, skel->custom_lineup);
+				if (m3)
+				{
+					htsmsg_print(m3);
+					m4 = htsmsg_create_map();
+					htsmsg_add_u32(m4, "index", ++lineup_cnt);
+					htsmsg_add_str(m4, "id", skel->custom_lineup+18);
+					htsmsg_add_msg(skel->lineups, skel->custom_lineup, m4);
+					htsmsg_destroy(m3);
+
+					for (j=0; j<4; j++)
+					{
+						if (skel->server_lineup[j] == 0)
+						{
+							skel->server_lineup[j] = lineup_cnt;
+							break;
+						}
+					}
+
+					for (j=0; j<4; j++)
+					{
+						if (skel->lineup[j] == 0)
+						{
+							skel->lineup[j] = lineup_cnt;
+							break;
+						}
+					}
+				}
+				free(skel->custom_lineup);
+				skel->custom_lineup = NULL;
+			}
 
 			if (skel->country && skel->zipcode)
 			{
@@ -251,6 +289,29 @@ sd_device_class_get_title ( idnode_t *self )
 }
 
 static int
+sd_device_class_custom_lineup_set( void *obj, const void *p )
+{
+  epggrab_module_sd_t *skel = obj;
+  const char lineup_base[] = "/20141201/lineups/";
+
+  if (p && strlen(p))
+  {
+    skel->custom_lineup = calloc(1, strlen(lineup_base) + strlen(p) + 1);
+    strcpy(skel->custom_lineup, lineup_base);
+    strcat(skel->custom_lineup, p);
+  }
+
+  return 1;
+}
+
+static const void *
+sd_device_class_custom_lineup_get( void *obj )
+{
+	static const char *str = "";
+	return &str;
+}
+
+static int
 sd_device_class_password_set( void *obj, const void *p )
 {
   epggrab_module_sd_t *skel = obj;
@@ -334,6 +395,10 @@ const idclass_t epggrab_sd_device_class = {
     {
       .name      = "Configure Lineup",
       .number    = 2,
+    },
+    {
+      .name      = "Advanced",
+      .number    = 3,
     },
     {}
   },
@@ -426,6 +491,14 @@ const idclass_t epggrab_sd_device_class = {
       .off       = offsetof(epggrab_module_sd_t, lineup[3]),
       .list      = sd_device_class_headend_list,
       .group     = 2,
+    },
+    {
+      .type      = PT_STR,
+      .id        = "custom",
+      .name      = "Custom Lineup",
+      .set       = sd_device_class_custom_lineup_set,
+      .get       = sd_device_class_custom_lineup_get,
+      .group     = 3,
     },
     {}
   },

@@ -920,7 +920,7 @@ static int sd_parse_metadata(
 			HTSMSG_FOREACH(g, m)
 			{
 				provider = htsmsg_get_map_by_field(g);
-				if (strcmp(g->hmf_name, "Tribune"))
+				if (strcmp(g->hmf_name, "Gracenote"))
 					printf("Provider: %s\n", g->hmf_name);
 
 				if (!htsmsg_get_s32(provider, "episode", &tmp))
@@ -1054,15 +1054,27 @@ static int sd_parse_content_rating(
 				age = 0;
 			else if (strcmp(code, "TVY") == 0)
 				age = 0;
+			else if (strcmp(code, "S") == 0)
+				age = 0;
+			else if (strcmp(code, "0") == 0)
+				age = 0;
+			else if (strcmp(code, "TP") == 0)
+				age = 0;
 			else if (strcmp(body, "Canadian Parental Rating") == 0 && strcmp(code, "C") == 0)
 				age = 1;
 			else if (strcmp(code, "TVY7") == 0)
 				age = 7;
+			else if (strcmp(code, "K7") == 0)
+				age = 7;
 			else if (strcmp(code, "PG") == 0)
+				age = 10;
+			else if (strcmp(code, "GP") == 0)
 				age = 10;
 			else if (strcmp(code, "TVPG") == 0)
 				age = 10;
 			else if (strcmp(code, "B") == 0)
+				age = 12;
+			else if (strcmp(code, "K12") == 0)
 				age = 12;
 			else if (strcmp(code, "PG-13") == 0)
 				age = 13;
@@ -1074,13 +1086,21 @@ static int sd_parse_content_rating(
 				age = 15;
 			else if (strcmp(code, "MA 15+") == 0)
 				age = 15;
+			else if (strcmp(code, "K16") == 0)
+				age = 16;
 			else if (strcmp(code, "R") == 0)
 				age = 17;
 			else if (strcmp(code, "TVMA") == 0)
 				age = 17;
+			else if (strcmp(code, "X") == 0)
+				age = 17;
+			else if (strcmp(code, "NC-17") == 0)
+				age = 17;
 			else if (strcmp(code, "C") == 0)
 				age = 18;
-			else if (strcmp(code, "NC-17") == 0)
+			else if (strcmp(code, "K18") == 0)
+				age = 18;
+			else if (strcmp(code, "R 18+") == 0)
 				age = 18;
 			else
 			{

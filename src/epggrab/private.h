@@ -198,4 +198,8 @@ void xmltv_init  ( void );
 void xmltv_done  ( void );
 void xmltv_load  ( void );
 
+/* Schedules Direct module */
+void sd_init     ( void );
+void sd_load     ( void );
+
 #endif /* __EPGGRAB_PRIVATE_H__ */

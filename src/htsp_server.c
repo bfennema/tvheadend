@@ -883,6 +883,10 @@ htsp_build_event
     htsmsg_add_str(out, "description", str);
     if ((str = epg_broadcast_get_summary(e, lang)))
       htsmsg_add_str(out, "summary", str);
+  } else if (ee && (str = epg_episode_get_description(ee, lang))) {
+    htsmsg_add_str(out, "description", str);
+    if ((str = epg_episode_get_summary(ee, lang)))
+      htsmsg_add_str(out, "summary", str);
   } else if((str = epg_broadcast_get_summary(e, lang)))
     htsmsg_add_str(out, "description", str);
   if (e->serieslink) {

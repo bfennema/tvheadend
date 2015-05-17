@@ -166,6 +166,18 @@ int epggrab_channel_set_number ( epggrab_channel_t *ec, int major, int minor )
   return save;
 }
 
+/* Set channel md5 */
+int epggrab_channel_set_md5 ( epggrab_channel_t *ec, htsmsg_t *md5 )
+{
+  int save = 0;
+  if (!ec || !md5) return 0;
+  if (ec->md5) htsmsg_destroy(ec->md5);
+  ec->md5 = htsmsg_copy(md5);
+  save = 1;
+  return save;
+}
+
+
 /* Channel settings updated */
 void epggrab_channel_updated ( epggrab_channel_t *ec )
 {

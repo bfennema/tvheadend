@@ -417,3 +417,21 @@ tvheadend.epggrab = function(panel, index) {
 
     tvheadend.paneladd(panel, confpanel, index);
 };
+
+tvheadend.epggrabnew = function(panel, index) {
+
+    tvheadend.idnode_form_grid(panel, {
+        url: 'api/epggrab',
+        clazz: 'epggrab_sd_client',
+        comet: 'epggrab_sd_client',
+        titleP: 'EPG Grabber (new)',
+        titleC: 'Grabber',
+        iconCls: 'xml',
+        tabIndex: index,
+        help: function() {
+            new tvheadend.help('EPG Grab Configuration', 'config_epggrab.html');
+        }
+    });
+
+    return panel;
+};

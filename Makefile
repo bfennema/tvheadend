@@ -41,6 +41,9 @@ endif
 ifeq ($(CONFIG_LIBICONV),yes)
 LDFLAGS += -liconv
 endif
+ifeq ($(CONFIG_LIBCURL),yes)
+LDFLAGS += -lcurl
+endif
 ifeq ($(PLATFORM), darwin)
 LDFLAGS += -framework CoreServices
 else
@@ -209,6 +212,7 @@ SRCS += src/epggrab/module.c\
 	src/epggrab/channel.c\
 	src/epggrab/module/pyepg.c\
 	src/epggrab/module/xmltv.c\
+	src/epggrab/module/sd.c\
 
 SRCS += src/plumbing/tsfix.c \
 	src/plumbing/globalheaders.c

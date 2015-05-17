@@ -168,6 +168,8 @@ void epggrab_module_ch_save ( void *_m, epggrab_channel_t *ch )
     htsmsg_add_u32(m, "major", ch->major);
   if (ch->minor)
     htsmsg_add_u32(m, "minor", ch->minor);
+  if (ch->md5)
+    htsmsg_add_msg(m, "md5", htsmsg_copy(ch->md5));
 
   hts_settings_save(m, "epggrab/%s/channels/%s", mod->id, ch->id);
   htsmsg_destroy(m);
@@ -215,6 +217,8 @@ static void _epggrab_module_channel_load
     egc->major = u32;
   if(!htsmsg_get_u32(m, "minor", &u32))
     egc->minor = u32;
+  if ((a = htsmsg_get_map(m, "md5")))
+    egc->md5 = htsmsg_copy(a);
   if ((a = htsmsg_get_list(m, "channels"))) {
     HTSMSG_FOREACH(f, a) {
       if ((str = htsmsg_field_get_str(f))) {
